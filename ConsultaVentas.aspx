@@ -25,235 +25,182 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 </head>
-<body runat="server" class="header-welcome">
+<body>
 
-<div class="container mt-5 small" style="margin-left: 150px;">
+<!-- Menú lateral -->
+<uc:MenuLateral ID="MenuLateral" runat="server" />
+
+<!-- Contenedor principal con margen para el sidebar -->
+<div class="main-content">
     <form runat="server">
+        <!-- Botón para dispositivos móviles -->
+        <button type="button" class="menu-toggle" onclick="toggleMenu()">☰</button>
 
-         <uc:CerrarSesion ID="CerrarSesion" runat="server" />
+        <!-- Botón de cerrar sesión -->
+        <uc:CerrarSesion ID="CerrarSesion" runat="server" />
 
-          <!-- Resto del contenido de la página -->
-        <div class="container mt-5" > <!-- Ajusta el padding-top para evitar que el contenido se oculte detrás del botón -->
-          
-           <!-- Llamada al control de usuario para el menú lateral -->
-      <button type="button" class="menu-toggle" onclick="toggleMenu()">☰</button>
-
-        <uc:MenuLateral ID="MenuLateral" runat="server" />
-        
-
-            <div class="row justify-content-center">
-                <div class="col-md-6 text-center">
+        <!-- Contenido de la página -->
+        <div class="container-fluid px-4 py-3">
+            <div class="row justify-content-center mb-3">
+                <div class="col-12 text-center">
                     <asp:Label ID="lblWelcome" runat="server" CssClass="h4 text-primary"></asp:Label>
                 </div>
             </div>
-               <h3 class="text-center">Consulta Ventas</h3>
-                        <div class="row mt-4">
-            <div class="col-md-2">
-                <label for="txtFechaInicial" class="form-label">Fecha Inicial</label>
-                <asp:TextBox ID="txtFechaInicial" runat="server" CssClass="form-control" TextMode="Date" placeholder="Seleccione una fecha"></asp:TextBox>
-            </div>
-            <div class="col-md-2">
-                <label for="txtFechaFinal" class="form-label">Fecha Final</label>
-                <asp:TextBox ID="txtFechaFinal" runat="server" CssClass="form-control" TextMode="Date" placeholder="Seleccione una fecha"></asp:TextBox>
-            </div>
-            <div class="col-md-3">
-                <label for="ddlEstacion" class="form-label">Estación</label>
-                <asp:DropDownList ID="ddlEstacion" runat="server" CssClass="form-select" AutoPostBack="true" OnSelectedIndexChanged="ddlEstacion_SelectedIndexChanged">
-                </asp:DropDownList>
-            </div>
-<%--            <div class="col-md-3">
-                <label for="ddlProducto" class="form-label">Producto</label>
-                <asp:UpdatePanel ID="UpdatePanelProducto" runat="server" UpdateMode="Conditional">
-                    <ContentTemplate>
-                        <asp:DropDownList ID="ddlProducto" runat="server" CssClass="form-select" AutoPostBack="true" OnSelectedIndexChanged="ddlProducto_SelectedIndexChanged">
-                        </asp:DropDownList>
-                    </ContentTemplate>
-                </asp:UpdatePanel>
-            </div>--%>
-
-            <div class="text-center mt-4">
-                <asp:Button ID="btnBuscar" runat="server" CssClass="btn btn-primary" Text="Buscar" OnClick="btnBuscar_Click" />
+            
+            <h3 class="text-center mb-4">Consulta Ventas</h3>
+            
+            <!-- Filtros -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label for="txtFechaInicial" class="form-label">Fecha Inicial</label>
+                    <asp:TextBox ID="txtFechaInicial" runat="server" CssClass="form-control" TextMode="Date"></asp:TextBox>
+                </div>
+                <div class="col-md-3">
+                    <label for="txtFechaFinal" class="form-label">Fecha Final</label>
+                    <asp:TextBox ID="txtFechaFinal" runat="server" CssClass="form-control" TextMode="Date"></asp:TextBox>
+                </div>
+                <div class="col-md-4">
+                    <label for="ddlEstacion" class="form-label">Estación</label>
+                    <asp:DropDownList ID="ddlEstacion" runat="server" CssClass="form-select" AutoPostBack="true" OnSelectedIndexChanged="ddlEstacion_SelectedIndexChanged">
+                    </asp:DropDownList>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <asp:Button ID="btnBuscar" runat="server" CssClass="btn btn-primary w-100" Text="Buscar" OnClick="btnBuscar_Click" />
+                </div>
             </div>
 
-            <div class="mt-5">
+            <!-- GridView -->
+            <div class="table-responsive">
+                <asp:GridView ID="gvDespachos" runat="server" AutoGenerateColumns="False" DataKeyNames="Transaccion"
+                    CssClass="table table-striped table-bordered table-hover small-font-gridview" EmptyDataText="No hay registros disponibles.">
+                    <Columns> 
+                        <asp:BoundField DataField="Transaccion" HeaderText="Transaccion" ReadOnly="True"/>
+                        <asp:BoundField DataField="Posicion" HeaderText="Posicion" ReadOnly="True" />
+                        <asp:BoundField DataField="NumTicket" HeaderText="NumTicket" ReadOnly="True" Visible="False" />
+                        <asp:BoundField DataField="Producto" HeaderText="Producto" ReadOnly="True" />
+                        <asp:BoundField DataField="FechaHora" HeaderText="FechaHora" ReadOnly="True" DataFormatString="{0:dd/MM/yyyy hh:mm:ss tt}" HtmlEncode="False" />
+                        
+                        <asp:TemplateField HeaderText="Precio">
+                            <ItemStyle CssClass="precio-column" />
+                            <ItemTemplate>
+                                <asp:Label ID="lblPrecioVenta" runat="server" Text='<%# String.Format("{0:N2}",Eval("Precio")) %>'/>
+                            </ItemTemplate>
+                        </asp:TemplateField>
 
+                        <asp:TemplateField HeaderText="Volumen">
+                            <ItemTemplate>
+                                <asp:Label ID="lblVolumenVenta" runat="server" Text='<%# String.Format("{0:N2}", Eval("Volumen")) %>' />
+                            </ItemTemplate>
+                        </asp:TemplateField>
 
-  <asp:GridView ID="gvDespachos" runat="server" AutoGenerateColumns="False" DataKeyNames="Transaccion"
-            CssClass="table table-striped table-bordered small-font-gridview" EmptyDataText="No hay registros disponibles.">
-        <Columns> 
-           
-            <asp:BoundField DataField="Transaccion" HeaderText="Transaccion" ReadOnly="True"/>
-              <asp:BoundField DataField="Posicion" HeaderText="Posicion" ReadOnly="True" />
-            <asp:BoundField DataField="NumTicket" HeaderText="NumTicket" ReadOnly="True" Visible="False" />
-            <asp:BoundField DataField="Producto" HeaderText="Producto" ReadOnly="True" />
-            <asp:BoundField DataField="FechaHora" HeaderText="FechaHora" ReadOnly="True" DataFormatString="{0:dd/MM/yyyy hh:mm:ss tt}" HtmlEncode="False" />
-  
-            <asp:TemplateField HeaderText="Precio">
-                <ItemStyle CssClass="precio-column" />
-                <ItemTemplate>
-                    <asp:Label ID="lblPrecioVenta" runat="server" Text='<%# String.Format("{0:N2}",Eval("Precio")) %>'/>
-                </ItemTemplate>
-      
-            </asp:TemplateField>
+                        <asp:TemplateField HeaderText="Importe">
+                            <ItemTemplate>
+                                <asp:Label ID="lblImporteVenta" runat="server" Text='<%# String.Format("{0:N2}", Eval("ImporteVenta")) %>' />
+                            </ItemTemplate>
+                        </asp:TemplateField>
 
-           <asp:TemplateField HeaderText="Volumen">
-                <ItemTemplate>
-                    <asp:Label ID="lblVolumenVenta" runat="server" Text='<%# String.Format("{0:N2}", Eval("Volumen")) %>' />
-                </ItemTemplate>
-      
-            </asp:TemplateField>
-      
-      
-            <asp:TemplateField HeaderText="Importe">
-                <ItemTemplate>
-                    <asp:Label ID="lblImporteVenta" runat="server" Text='<%# String.Format("{0:N2}", Eval("ImporteVenta")) %>' />
-                </ItemTemplate>
-      
-            </asp:TemplateField>
-
-              <asp:BoundField DataField="uuid" HeaderText="UUID" ReadOnly="True" ItemStyle-CssClass="uuid-column"/>
-            <asp:BoundField DataField="Factura" HeaderText="Factura" ReadOnly="True" ItemStyle-CssClass="txt-column"/>
+                        <asp:BoundField DataField="uuid" HeaderText="UUID" ReadOnly="True" ItemStyle-CssClass="uuid-column"/>
+                        <asp:BoundField DataField="Factura" HeaderText="Factura" ReadOnly="True" ItemStyle-CssClass="txt-column"/>
                         <asp:BoundField DataField="VentaEliminada" HeaderText="VentaEliminada" ReadOnly="True" Visible="False" />
 
-                <asp:TemplateField HeaderText="Acciones">
-                    <ItemTemplate>
-                        <!-- Botón Subir XML (Solo se muestra si UUID está vacío) -->
-                     <asp:Button ID="btnAccion" runat="server" CssClass='<%# string.IsNullOrEmpty(Eval("uuid").ToString()) ? "btn btn-primary btn-sm" : "btn btn-success btn-sm" %>'
-            Text='<%# string.IsNullOrEmpty(Eval("uuid").ToString()) ? "Subir XML" : "Facturado" %>'
-            OnClientClick='<%# string.IsNullOrEmpty(Eval("uuid").ToString()) ? string.Format("abrirModal(\"{0}\"); return false;", Eval("Transaccion")) : "return false;" %>'
-          Enabled='<%# Eval("VentaEliminada") != DBNull.Value && !Convert.ToBoolean(Eval("VentaEliminada")) %>'  />
-                          
-
-        
-                        <!-- Espacio entre botones -->
-                        &nbsp;
-
-                        <!-- Botón Eliminar (Siempre visible) -->
-                 <asp:Button ID="btnEliminar" runat="server" CssClass="btn btn-danger btn-sm"
-            Text="Eliminar"
-            OnClientClick='<%# string.Format("confirmarEliminar(\"{0}\"); return false;", Eval("Transaccion")) %>'
-              Enabled='<%# Eval("VentaEliminada") != DBNull.Value && !Convert.ToBoolean(Eval("VentaEliminada")) %>' />
-                          <!-- Botón Eliminar (Siempre visible) -->
-                   <!-- Botón Desenlazar (Siempre visible) -->
-        <asp:Button ID="btnEliminarFactura" runat="server" CssClass="btn btn-black btn-sm"
-            Text="Desenlazar"
-            OnClientClick='<%# string.Format("confirmarEliminarFactura(\"{0}\"); return false;", Eval("Transaccion")) %>'
-           Enabled='<%# Eval("VentaEliminada") != DBNull.Value && !Convert.ToBoolean(Eval("VentaEliminada")) %>' />
-                    </ItemTemplate>
-                </asp:TemplateField>
-                    
-        </Columns>
-    </asp:GridView>
-</div>
+                        <asp:TemplateField HeaderText="Acciones">
+                            <ItemTemplate>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    <asp:Button ID="btnAccion" runat="server" 
+                                        CssClass='<%# string.IsNullOrEmpty(Eval("uuid").ToString()) ? "btn btn-primary btn-sm" : "btn btn-success btn-sm" %>'
+                                        Text='<%# string.IsNullOrEmpty(Eval("uuid").ToString()) ? "Subir XML" : "Facturado" %>'
+                                        OnClientClick='<%# string.IsNullOrEmpty(Eval("uuid").ToString()) ? string.Format("abrirModal(\"{0}\"); return false;", Eval("Transaccion")) : "return false;" %>'
+                                        Enabled='<%# Eval("VentaEliminada") != DBNull.Value && !Convert.ToBoolean(Eval("VentaEliminada")) %>' />
+                                    
+                                    <asp:Button ID="btnEliminar" runat="server" CssClass="btn btn-danger btn-sm"
+                                        Text="Eliminar"
+                                        OnClientClick='<%# string.Format("confirmarEliminar(\"{0}\"); return false;", Eval("Transaccion")) %>'
+                                        Enabled='<%# Eval("VentaEliminada") != DBNull.Value && !Convert.ToBoolean(Eval("VentaEliminada")) %>' />
+                                    
+                                    <asp:Button ID="btnEliminarFactura" runat="server" CssClass="btn btn-dark btn-sm"
+                                        Text="Desenlazar"
+                                        OnClientClick='<%# string.Format("confirmarEliminarFactura(\"{0}\"); return false;", Eval("Transaccion")) %>'
+                                        Enabled='<%# Eval("VentaEliminada") != DBNull.Value && !Convert.ToBoolean(Eval("VentaEliminada")) %>' />
+                                </div>
+                            </ItemTemplate>
+                        </asp:TemplateField>
+                    </Columns>
+                </asp:GridView>
+            </div>
         </div>
-           </div>
 
         <!-- Modal para subir XML -->
-<div class="modal fade" id="modalSubirXML" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modalLabel">Subir XML</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <asp:HiddenField ID="hfTransaccion" runat="server" /> <!-- Almacena la Transacción -->
-                <p><strong>Transacción: </strong> <span id="lblTransaccionModal"></span></p>
-                <asp:FileUpload ID="fileUploadXML" runat="server" CssClass="form-control" />
-            </div>
-            <div class="modal-footer">
-                <asp:Button ID="btnSubirXML" runat="server" CssClass="btn btn-primary" Text="Subir" OnClick="btnSubirXML_Click" />
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal para mostrar el XML -->
-<div id="xmlModal" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="xmlModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="xmlModalLabel">Vista Previa del XML</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <pre id="xmlContent" style="white-space: pre-wrap; word-wrap: break-word;"></pre>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-               <%-- <asp:Button ID="btnContinuar" runat="server" CssClass="btn btn-primary" OnClick="btnContinuar_Click" Text="Continuar" />--%>
+        <div class="modal fade" id="modalSubirXML" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalLabel">Subir XML</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <asp:HiddenField ID="hfTransaccion" runat="server" />
+                        <p><strong>Transacción: </strong> <span id="lblTransaccionModal"></span></p>
+                        <asp:FileUpload ID="fileUploadXML" runat="server" CssClass="form-control" />
+                    </div>
+                    <div class="modal-footer">
+                        <asp:Button ID="btnSubirXML" runat="server" CssClass="btn btn-primary" Text="Subir" OnClick="btnSubirXML_Click" />
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</div>
-
-
-
     </form>
-
-            
-
-
 </div>
 
+<script>
+    function confirmarEliminar(transaccion) {
+        Swal.fire({
+            title: "¿Estás seguro?",
+            text: "Esta acción eliminará la venta de manera permanente.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Sí, eliminar",
+            cancelButtonText: "Cancelar"
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Si el usuario confirma, hacer postback y llamar al servidor
+                __doPostBack('btnEliminar', transaccion);
+            }
+        });
+    }
 
+    function confirmarEliminarFactura(transaccion) {
+        Swal.fire({
+            title: "¿Estás seguro?",
+            text: "Esta acción eliminará la Factura de manera permanente.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Sí, eliminar",
+            cancelButtonText: "Cancelar"
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Si el usuario confirma, hacer postback y llamar al servidor
+                __doPostBack('btnEliminarFactura', transaccion);
+            }
+        });
+    }
 
-    <script>
-        
-    
+    function mostrarAlerta(titulo, texto, icono) {
+        Swal.fire({
+            title: titulo,
+            text: texto,
+            icon: icono,
+            confirmButtonText: 'Aceptar',
+            allowOutsideClick: false
+        });
+    }
 
-
-        function confirmarEliminar(transaccion) {
-            Swal.fire({
-                title: "¿Estás seguro?",
-                text: "Esta acción eliminará la venta de manera permanente.",
-                icon: "warning",
-                showCancelButton: true,
-                confirmButtonColor: "#d33",
-                cancelButtonColor: "#3085d6",
-                confirmButtonText: "Sí, eliminar",
-                cancelButtonText: "Cancelar"
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    // Si el usuario confirma, hacer postback y llamar al servidor
-                    __doPostBack('btnEliminar', transaccion);
-                }
-            });
-        }
-
-
-        function confirmarEliminarFactura(transaccion) {
-            Swal.fire({
-                title: "¿Estás seguro?",
-                text: "Esta acción eliminará la Factura de manera permanente.",
-                icon: "warning",
-                showCancelButton: true,
-                confirmButtonColor: "#d33",
-                cancelButtonColor: "#3085d6",
-                confirmButtonText: "Sí, eliminar",
-                cancelButtonText: "Cancelar"
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    // Si el usuario confirma, hacer postback y llamar al servidor
-                    __doPostBack('btnEliminarFactura', transaccion);
-                }
-            });
-        }
-
-
-        function mostrarAlerta(titulo, texto, icono) {
-            Swal.fire({
-                title: titulo,
-                text: texto,
-                icon: icono,
-                confirmButtonText: 'Aceptar',
-                allowOutsideClick: false
-            });
-        }
-
-        function abrirModal(transaccion) {
-            document.getElementById('<%= hfTransaccion.ClientID %>').value = transaccion;
+    function abrirModal(transaccion) {
+        document.getElementById('<%= hfTransaccion.ClientID %>').value = transaccion;
         document.getElementById('lblTransaccionModal').innerText = transaccion;
 
         // Cerrar cualquier modal abierto antes de abrir otro
@@ -275,109 +222,101 @@
     }
 
 
-        // Función para alternar la visibilidad del menú en pantallas pequeñas
-        function toggleMenu() {
-            var sidebar = document.getElementById("sidebarMenu");
-            sidebar.classList.toggle("show");
-        }
-    </script>
-    <style>
+    // Función para alternar la visibilidad del menú en pantallas pequeñas
+    function toggleMenu() {
+        var sidebar = document.getElementById("sidebarMenu");
+        sidebar.classList.toggle("show");
+    }
+</script>
 
-        .uuid-column {
-    max-width: 100px; /* Ajusta el tamaño según necesites */
-        min-width: 200px;  /* Aumenta el ancho mínimo */
-    white-space: nowrap; /* Evita que el texto se divida en varias líneas */
-    overflow: hidden;
-    text-overflow: ellipsis; /* Muestra "..." si el texto es muy largo */
-}
-          .txt-column {
-    max-width: 10px; /* Ajusta el tamaño según necesites */
-     min-width: 150px;  /* Aumenta el ancho mínimo */
-    white-space: nowrap; /* Evita que el texto se divida en varias líneas */
-    overflow: hidden;
-    text-overflow: ellipsis; /* Muestra "..." si el texto es muy largo */
-}
-
-          .precio-column {
-    max-width: 10px; /* Ajusta el tamaño según necesites */
-  
-    text-align: left; /* Alinea el texto a la derecha (opcional) */
-    white-space: nowrap; /* Evita que el texto se divida en varias líneas */
-    overflow: hidden;
-    text-overflow: ellipsis; /* Muestra "..." si el texto es muy largo */
-}
-
-        .modal {
-    z-index: 1050 !important; /* Asegura que el modal esté en la parte superior */
-}
-
-.modal-backdrop {
-    z-index: 1049 !important; /* La capa de fondo debe estar justo debajo del modal */
-}
-
-body.modal-open {
-    overflow: hidden; /* Evita que el fondo se desplace cuando el modal está abierto */
-}
-
-         .menu-toggle {
-            display: none;
-        }
-
-        @media (max-width: 768px) {
-            .menu-toggle {
-                display: block;
-                position: fixed;
-                top: 15px;
-                left: 15px;
-                z-index: 2;
-                background-color: #343a40;
-                color: white;
-                border: none;
-                padding: 10px;
-                font-size: 12px;
-                cursor: pointer;
-            }
-
-            .content {
-                margin-left: 0; /* Sin margen cuando el menú está oculto */
-            }
-        }
-
-            .small-font-gridview {
-        font-size: 0.65em; /* Ajusta el valor según el tamaño que desees */
+<style>
+    /* Contenedor principal con margen para el sidebar */
+    .main-content {
+        margin-left: 250px;
+        min-height: 100vh;
+        background-color: #f8f9fa;
+        transition: margin-left 0.3s ease;
     }
 
-    .small-font-gridview th,
+    /* Botón toggle para móviles */
+    .menu-toggle {
+        display: none;
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        z-index: 1100;
+        background-color: #2c3e50;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        font-size: 18px;
+        cursor: pointer;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    .menu-toggle:hover {
+        background-color: #34495e;
+    }
+
+    /* Estilos del GridView */
+    .small-font-gridview {
+        font-size: 0.85em;
+    }
+
+    .small-font-gridview th {
+        background-color: lightgray;
+        color: white;
+        padding: 12px 8px;
+        font-weight: 600;
+    }
+
     .small-font-gridview td {
-        padding: 5px; /* Opcional: ajusta el espacio entre el texto y los bordes */
+        padding: 8px;
+        vertical-align: middle;
     }
 
-            /* Asegura que los campos de entrada en el modo de edición mantengan el mismo tamaño de letra */
-        table input[type="text"] {
-            font-size: 10px; /* Ajusta al tamaño que necesites */
-            width: 100%; /* Esto hará que el campo ocupe todo el espacio de la celda */
-            box-sizing: border-box; /* Asegura que el padding no exceda el ancho de la celda */
-        }
-        .header-welcome {
-    margin-top: 100px; /* Ajusta el valor según lo necesites */
-    text-align: center; /* Centra el contenido horizontalmente */
-    font-family: Arial, sans-serif; /* Fuente opcional */
-}
-        .btn-black {
-    background-color: black; /* Fondo negro */
-    color: white; /* Texto en blanco */
-    border: none; /* Elimina bordes adicionales */
-    padding: 5px 10px; /* Ajusta el tamaño del botón */
-    font-size: 14px; /* Tamaño del texto */
-    border-radius: 4px; /* Bordes redondeados opcionales */
-    cursor: pointer;
-}
+    .uuid-column {
+        max-width: 200px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 
-.btn-black:hover {
-    background-color: #333; /* Cambia el color al pasar el mouse */
-     color: white;
-}
-  
-    </style>
+    .txt-column {
+        max-width: 150px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .precio-column {
+        text-align: right;
+    }
+
+    /* Modal */
+    .modal {
+        z-index: 1055 !important;
+    }
+
+    .modal-backdrop {
+        z-index: 1050 !important;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .main-content {
+            margin-left: 0;
+        }
+
+        .menu-toggle {
+            display: block;
+        }
+
+        .small-font-gridview {
+            font-size: 0.75em;
+        }
+    }
+</style>
 </body>
 </html>

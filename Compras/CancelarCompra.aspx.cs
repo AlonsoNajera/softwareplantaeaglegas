@@ -42,8 +42,8 @@ namespace SoftwarePlantas.Compras
 
             if (Request["__EVENTTARGET"] == "btnEliminar" && Request["__EVENTARGUMENT"] != null)
             {
-                string Folio = Request["__EVENTARGUMENT"];
-                EliminarRecepcion(Folio);
+                string folio = Request["__EVENTARGUMENT"];
+                EliminarRecepcion(folio);
             }
          
         }
@@ -151,7 +151,7 @@ namespace SoftwarePlantas.Compras
             if (string.IsNullOrEmpty(folio))
             {
                 ScriptManager.RegisterStartupScript(this, GetType(), "error",
-                    "Swal.fire('Error', 'No se recibió el folio.', 'error');", true);
+                    "Swal.fire('Error', 'No se recibió el Folio.', 'error');", true);
                 return;
             }
 
@@ -170,15 +170,15 @@ namespace SoftwarePlantas.Compras
 
                 try
                 {
-                    // 🔄 Actualizar Recepciones
-                    string updateRecepcion = " UPDATE Recepciones SET Estado = 4,UUID='',TransCRE='',ClaveVehiculo='',VolumenPemex=0,FolioDocumento=0,FechaDocumento=NULL,TipoDocumento='',TeminalAlmacenamiento='' WHERE Folio = @Folio";
+                    // 🔄 Actualizar Recepciones usando Folio
+                    string updateRecepcion = "UPDATE Recepciones SET Estado = 0,UUID='',TransCRE='',ClaveVehiculo='',VolumenPemex=0,FolioDocumento=0,FechaDocumento=NULL,TipoDocumento='',TeminalAlmacenamiento='' WHERE Folio = @Folio";
                     using (SqlCommand cmd1 = new SqlCommand(updateRecepcion, conn, trans))
                     {
                         cmd1.Parameters.AddWithValue("@Folio", folio);
                         cmd1.ExecuteNonQuery();
                     }
 
-                    // ❌ Eliminar de otra tabla relacionada (ejemplo: Movimientos)
+                    // ❌ Eliminar de RecepcionesCap usando Folio
                     string deleteRelacionada = "DELETE FROM Recepcionescap WHERE Folio = @Folio";
                     using (SqlCommand cmd2 = new SqlCommand(deleteRelacionada, conn, trans))
                     {
@@ -225,7 +225,7 @@ namespace SoftwarePlantas.Compras
         {
             string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
             GridViewRow row = gvRecepciones.Rows[e.RowIndex];
-            string folio = gvRecepciones.DataKeys[e.RowIndex].Value.ToString();
+            string id = gvRecepciones.DataKeys[e.RowIndex].Value.ToString(); // Ahora usa Id en lugar de Folio
 
             string fecha = ((TextBox)row.FindControl("txtFecha")).Text;
             string volumenCapturado = ((TextBox)row.FindControl("txtVolumenCapturado")).Text;
@@ -242,7 +242,7 @@ namespace SoftwarePlantas.Compras
                          SET FechaDocumento = @Fecha, VolumenPemex = @VolumenCapturado,
                              FolioDocumento = @FolioDocumento, UUID = @UUID, ClaveVehiculo = @ClaveVehiculo,
                              TransCRE = @TransCRE, PrecioCompra = @PrecioCompra
-                         WHERE Folio = @Folio";
+                         WHERE Id = @Id";
 
                 using (SqlCommand cmd = new SqlCommand(query, con))
                 {
@@ -253,7 +253,7 @@ namespace SoftwarePlantas.Compras
                     cmd.Parameters.AddWithValue("@ClaveVehiculo", claveVehiculo);
                     cmd.Parameters.AddWithValue("@TransCRE", transCRE);
                     cmd.Parameters.AddWithValue("@PrecioCompra", precioCompra);
-                    cmd.Parameters.AddWithValue("@Folio", folio);
+                    cmd.Parameters.AddWithValue("@Id", id); // Usa Id en lugar de Folio
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -283,7 +283,7 @@ namespace SoftwarePlantas.Compras
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
                 string query = @"     SELECT R.Folio,R.Tanque,R.Producto,R.VolumenRecepcion,RCAP.FechaDocumento,RCAP.VolumenPemex AS VolumenCapturado,RCAP.FolioDocumento,
-                                    RCAP.UUID,RCAP.ClaveVehiculo,RCAP.TransCRE,RCAP.PrecioCompra FROM Recepciones R INNER JOIN Recepcionescap RCAP ON R.Folio=RCAP.Folio
+                                    RCAP.UUID,RCAP.ClaveVehiculo,RCAP.TransCRE,RCAP.PrecioCompra,RCAP.Id FROM Recepciones R INNER JOIN Recepcionescap RCAP ON R.Folio=RCAP.Folio
                                     WHERE CAST(RCAP.FechaDocumento AS DATE) BETWEEN @Inicio AND @Fin ";
 
                 SqlCommand cmd = new SqlCommand(query, conn);

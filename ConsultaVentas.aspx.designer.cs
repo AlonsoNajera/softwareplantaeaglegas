@@ -15,15 +15,6 @@ namespace SoftwarePlantas
     {
 
         /// <summary>
-        /// Control CerrarSesion.
-        /// </summary>
-        /// <remarks>
-        /// Campo generado automáticamente.
-        /// Para modificarlo, mueva la declaración del campo del archivo del diseñador al archivo de código subyacente.
-        /// </remarks>
-        protected global::SoftwarePlantas.CerrarSesion CerrarSesion;
-
-        /// <summary>
         /// Control MenuLateral.
         /// </summary>
         /// <remarks>
@@ -31,6 +22,15 @@ namespace SoftwarePlantas
         /// Para modificarlo, mueva la declaración del campo del archivo del diseñador al archivo de código subyacente.
         /// </remarks>
         protected global::SoftwarePlantas.MenuLateral MenuLateral;
+
+        /// <summary>
+        /// Control CerrarSesion.
+        /// </summary>
+        /// <remarks>
+        /// Campo generado automáticamente.
+        /// Para modificarlo, mueva la declaración del campo del archivo del diseñador al archivo de código subyacente.
+        /// </remarks>
+        protected global::SoftwarePlantas.CerrarSesion CerrarSesion;
 
         /// <summary>
         /// Control lblWelcome.
