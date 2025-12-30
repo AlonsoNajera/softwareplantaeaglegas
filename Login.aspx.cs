@@ -34,7 +34,7 @@ namespace SoftwarePlantas
                     return;
                 }
 
-                lblVersion.Text = "LICENCIA ACTIVA - Version 3.1";
+                lblVersion.Text = "LICENCIA ACTIVA - Version 3.3";
             }
         }
 
