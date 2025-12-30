@@ -282,7 +282,7 @@ namespace SoftwarePlantas.Compras
 
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
-                string query = @"     SELECT R.Folio,R.Tanque,R.Producto,R.VolumenRecepcion,RCAP.FechaDocumento,RCAP.VolumenPemex AS VolumenCapturado,RCAP.FolioDocumento,
+                string query = @" SELECT R.Folio,R.Tanque,R.Producto,R.VolumenRecepcion,RCAP.FechaDocumento,RCAP.VolumenPemex AS VolumenCapturado,RCAP.FolioDocumento,
                                     RCAP.UUID,RCAP.ClaveVehiculo,RCAP.TransCRE,RCAP.PrecioCompra,RCAP.Id FROM Recepciones R INNER JOIN Recepcionescap RCAP ON R.Folio=RCAP.Folio
                                     WHERE CAST(RCAP.FechaDocumento AS DATE) BETWEEN @Inicio AND @Fin ";
 
