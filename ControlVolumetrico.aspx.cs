@@ -1,4 +1,5 @@
-﻿using iTextSharp.text;
+﻿
+using iTextSharp.text;
 using iTextSharp.text.pdf;
 using Microsoft.Ajax.Utilities;
 using Newtonsoft.Json;
@@ -15,13 +16,15 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Threading;
 using System.Web;
 using System.Web.Configuration;
 using System.Web.UI;
 using System.Web.UI.WebControls;
+using System.Drawing;
+using System.Drawing.Printing;
 using System.Xml.Linq;
-using ClosedXML.Excel;
-using System.Threading;
+using static SoftwarePlantas.ControlVolumetrico;
 
 namespace SoftwarePlantas
 {
@@ -893,81 +896,249 @@ ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
             return list;
         }
 
-        private byte[] GenerarExcelRecepciones(
-      List<RecepcionExcel> data,
-      DateTime inicio,
-      DateTime fin
-  )
+        private List<EntregaExcel> ObtenerEntregasExcel(DateTime inicio, DateTime fin, string cs)
         {
-            using (var wb = new XLWorkbook())
-            {
-                var ws = wb.Worksheets.Add("Recepciones");
+            var list = new List<EntregaExcel>();
 
+            using (var cn = new SqlConnection(cs))
+            {
+                cn.Open();
+
+                var sql = @"
+SELECT
+    D.UUID,
+    RTRIM(D.RFC) AS RFCCliente,
+    RTRIM(D.RazonSocial) AS NombreCliente,
+    CAST(D.Fecha AS date) AS Fecha,
+    DD.Codigo,
+    SUM(DD.Cantidad) AS Cantidad,
+    D.Total AS Total
+FROM dbo.Documentos D
+INNER JOIN dbo.DocumentosDetalle DD ON D.UUID = DD.UUID
+WHERE CAST(D.Fecha AS date) BETWEEN @inicio AND @fin
+GROUP BY  D.UUID,  RTRIM(D.RFC),RTRIM(D.RazonSocial),CAST(D.Fecha AS date),    DD.Codigo,  D.Total
+ORDER BY CAST(D.Fecha AS date)
+;";
+
+                using (var cmd = new SqlCommand(sql, cn))
+                {
+                    cmd.Parameters.Add("@inicio", SqlDbType.Date).Value = inicio.Date;
+                    cmd.Parameters.Add("@fin", SqlDbType.Date).Value = fin.Date;
+
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        while (dr.Read())
+                        {
+                            list.Add(new EntregaExcel
+                            {
+                                UUID = dr["UUID"]?.ToString(),
+                                RFCCliente = dr["RFCCliente"]?.ToString(),
+                                NombreCliente = dr["NombreCliente"]?.ToString(),
+                                Fecha = dr["Fecha"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(dr["Fecha"]),
+                                Codigo = dr["Codigo"]?.ToString(),
+                                Cantidad = dr["Cantidad"] == DBNull.Value ? 0 : Convert.ToDouble(dr["Cantidad"]),
+                                Total = dr["Total"] == DBNull.Value ? 0 : Convert.ToDouble(dr["Total"])
+                            });
+                        }
+                    }
+                }
+            }
+
+            return list;
+        }
+
+
+        private byte[] GenerarExcelCompleto(
+     List<RecepcionExcel> recepciones,
+     List<EntregaExcel> entregas,
+     List<ExistenciaExcel> existencias,
+     DateTime inicio,
+     DateTime fin)
+        {
+            // EPPlus 4.5.3.3 NO requiere licencia
+            using (var package = new ExcelPackage())
+            {
+                // ===== HOJA 1: RECEPCIONES =====
+                var wsRecepciones = package.Workbook.Worksheets.Add("Recepciones");
                 int row = 1;
 
-                // ===== Título =====
-                ws.Cell(row, 1).Value = "RECEPCIONES";
-                ws.Range(row, 1, row, 10).Merge();
-                ws.Range(row, 1, row, 10).Style.Font.Bold = true;
-                ws.Range(row, 1, row, 10).Style.Font.FontSize = 14;
-                ws.Range(row, 1, row, 10).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                wsRecepciones.Cells[row, 1].Value = "RECEPCIONES";
+                wsRecepciones.Cells[row, 1, row, 10].Merge = true;
+                wsRecepciones.Cells[row, 1, row, 10].Style.Font.Bold = true;
+                wsRecepciones.Cells[row, 1, row, 10].Style.Font.Size = 14;
+                wsRecepciones.Cells[row, 1, row, 10].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
                 row++;
 
-                // ===== Periodo =====
-                ws.Cell(row, 1).Value = "Periodo:";
-                ws.Cell(row, 2).Value = $"{inicio:yyyy-MM-dd} al {fin:yyyy-MM-dd}";
+                wsRecepciones.Cells[row, 1].Value = "Periodo:";
+                wsRecepciones.Cells[row, 2].Value = $"{inicio:yyyy-MM-dd} al {fin:yyyy-MM-dd}";
                 row += 2;
 
-                // ===== Encabezados =====
-                ws.Cell(row, 1).Value = "Folio";
-                ws.Cell(row, 2).Value = "RFC Proveedor";
-                ws.Cell(row, 3).Value = "Nombre";
-                ws.Cell(row, 4).Value = "Permiso";
-                ws.Cell(row, 5).Value = "UUID";
-                ws.Cell(row, 6).Value = "Fecha Documento";
-                ws.Cell(row, 7).Value = "Fecha Recepción";
-                ws.Cell(row, 8).Value = "Folio Documento";
-                ws.Cell(row, 9).Value = "Volumen";
-                ws.Cell(row, 10).Value = "Precio Compra";
+                // Encabezados
+                string[] headersR = { "Folio", "RFC Proveedor", "Nombre", "Permiso", "UUID",
+                             "Fecha Documento", "Fecha Recepción", "Folio Documento",
+                             "Volumen", "Precio Compra" };
+                for (int i = 0; i < headersR.Length; i++)
+                {
+                    wsRecepciones.Cells[row, i + 1].Value = headersR[i];
+                }
 
-                ws.Range(row, 1, row, 10).Style.Font.Bold = true;
-                ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.LightGray;
-                ws.Range(row, 1, row, 10).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-                ws.Range(row, 1, row, 10).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-
+                wsRecepciones.Cells[row, 1, row, 10].Style.Font.Bold = true;
+                wsRecepciones.Cells[row, 1, row, 10].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsRecepciones.Cells[row, 1, row, 10].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+                wsRecepciones.Cells[row, 1, row, 10].Style.Border.BorderAround(ExcelBorderStyle.Thin);
                 row++;
 
-                // ===== Datos =====
-                foreach (var r in data)
+                foreach (var r in recepciones)
                 {
-                    ws.Cell(row, 1).Value = r.Folio ?? "";
-                    ws.Cell(row, 2).Value = r.RFCProveedor ?? "";
-                    ws.Cell(row, 3).Value = r.NombreProveedor ?? "";
-                    ws.Cell(row, 4).Value = r.PermisoProveedor ?? "";
-                    ws.Cell(row, 5).Value = r.UUID ?? "";
+                    wsRecepciones.Cells[row, 1].Value = r.Folio ?? "";
+                    wsRecepciones.Cells[row, 2].Value = r.RFCProveedor ?? "";
+                    wsRecepciones.Cells[row, 3].Value = r.NombreProveedor ?? "";
+                    wsRecepciones.Cells[row, 4].Value = r.PermisoProveedor ?? "";
+                    wsRecepciones.Cells[row, 5].Value = r.UUID ?? "";
+                    wsRecepciones.Cells[row, 6].Value = r.FechaDocumento?.ToString("yyyy-MM-dd") ?? "";
+                    wsRecepciones.Cells[row, 7].Value = r.FechaRecepcion?.ToString("yyyy-MM-dd") ?? "";
+                    wsRecepciones.Cells[row, 8].Value = r.FolioDocumento ?? "";
+                    wsRecepciones.Cells[row, 9].Value = r.Volumen;
+                    wsRecepciones.Cells[row, 10].Value = r.PrecioCompra;
 
-                    ws.Cell(row, 6).Value = r.FechaDocumento?.ToString("yyyy-MM-dd") ?? "";
-                    ws.Cell(row, 7).Value = r.FechaRecepcion?.ToString("yyyy-MM-dd") ?? "";
-
-                    ws.Cell(row, 8).Value = r.FolioDocumento ?? "";
-                    ws.Cell(row, 9).Value = r.Volumen;
-                    ws.Cell(row, 10).Value = r.PrecioCompra;
-
-                    ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0.000";
-                    ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0.00";
-
+                    wsRecepciones.Cells[row, 9].Style.Numberformat.Format = "#,##0.000";
+                    wsRecepciones.Cells[row, 10].Style.Numberformat.Format = "#,##0.00";
                     row++;
                 }
 
-                // ===== Ajustes finales =====
-                ws.Columns().AdjustToContents();
-                ws.SheetView.FreezeRows(4);
+                wsRecepciones.Cells.AutoFitColumns();
+                wsRecepciones.View.FreezePanes(5, 1);
 
-                using (var ms = new MemoryStream())
+                // ===== HOJA 2: ENTREGAS =====
+                var wsEntregas = package.Workbook.Worksheets.Add("Entregas");
+                row = 1;
+
+                wsEntregas.Cells[row, 1].Value = "ENTREGAS";
+                wsEntregas.Cells[row, 1, row, 7].Merge = true;
+                wsEntregas.Cells[row, 1, row, 7].Style.Font.Bold = true;
+                wsEntregas.Cells[row, 1, row, 7].Style.Font.Size = 14;
+                wsEntregas.Cells[row, 1, row, 7].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                row++;
+
+                wsEntregas.Cells[row, 1].Value = "Periodo:";
+                wsEntregas.Cells[row, 2].Value = $"{inicio:yyyy-MM-dd} al {fin:yyyy-MM-dd}";
+                row += 2;
+
+                string[] headersE = { "UUID", "RFC Cliente", "Nombre Cliente", "Fecha",
+                             "Código Producto", "Cantidad", "Total" };
+                for (int i = 0; i < headersE.Length; i++)
                 {
-                    wb.SaveAs(ms);
-                    return ms.ToArray();
+                    wsEntregas.Cells[row, i + 1].Value = headersE[i];
                 }
+
+                wsEntregas.Cells[row, 1, row, 7].Style.Font.Bold = true;
+                wsEntregas.Cells[row, 1, row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsEntregas.Cells[row, 1, row, 7].Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+                wsEntregas.Cells[row, 1, row, 7].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+                row++;
+
+                double totalCantidad = 0;
+                double totalImporte = 0;
+
+                foreach (var e in entregas)
+                {
+                    wsEntregas.Cells[row, 1].Value = e.UUID ?? "";
+                    wsEntregas.Cells[row, 2].Value = e.RFCCliente ?? "";
+                    wsEntregas.Cells[row, 3].Value = e.NombreCliente ?? "";
+                    wsEntregas.Cells[row, 4].Value = e.Fecha?.ToString("yyyy-MM-dd") ?? "";
+                    wsEntregas.Cells[row, 5].Value = e.Codigo ?? "";
+                    wsEntregas.Cells[row, 6].Value = e.Cantidad;
+                    wsEntregas.Cells[row, 7].Value = e.Total;
+
+                    wsEntregas.Cells[row, 6].Style.Numberformat.Format = "#,##0.000";
+                    wsEntregas.Cells[row, 7].Style.Numberformat.Format = "#,##0.00";
+
+                    totalCantidad += e.Cantidad;
+                    totalImporte += e.Total;
+                    row++;
+                }
+
+                wsEntregas.Cells[row, 1].Value = "TOTALES:";
+                wsEntregas.Cells[row, 1, row, 5].Merge = true;
+                wsEntregas.Cells[row, 1, row, 5].Style.Font.Bold = true;
+                wsEntregas.Cells[row, 1, row, 5].Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
+                wsEntregas.Cells[row, 1, row, 5].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsEntregas.Cells[row, 1, row, 5].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+                wsEntregas.Cells[row, 6].Value = totalCantidad;
+                wsEntregas.Cells[row, 6].Style.Numberformat.Format = "#,##0.000";
+                wsEntregas.Cells[row, 6].Style.Font.Bold = true;
+                wsEntregas.Cells[row, 6].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsEntregas.Cells[row, 6].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+                wsEntregas.Cells[row, 7].Value = totalImporte;
+                wsEntregas.Cells[row, 7].Style.Numberformat.Format = "#,##0.00";
+                wsEntregas.Cells[row, 7].Style.Font.Bold = true;
+                wsEntregas.Cells[row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsEntregas.Cells[row, 7].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+                wsEntregas.Cells.AutoFitColumns();
+                wsEntregas.View.FreezePanes(5, 1);
+
+                // ===== HOJA 3: EXISTENCIAS =====
+                var wsExistencias = package.Workbook.Worksheets.Add("Existencias");
+                row = 1;
+
+                wsExistencias.Cells[row, 1].Value = "EXISTENCIAS";
+                wsExistencias.Cells[row, 1, row, 4].Merge = true;
+                wsExistencias.Cells[row, 1, row, 4].Style.Font.Bold = true;
+                wsExistencias.Cells[row, 1, row, 4].Style.Font.Size = 14;
+                wsExistencias.Cells[row, 1, row, 4].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                row++;
+
+                wsExistencias.Cells[row, 1].Value = "Periodo:";
+                wsExistencias.Cells[row, 2].Value = $"{inicio:yyyy-MM-dd} al {fin:yyyy-MM-dd}";
+                row += 2;
+
+                string[] headersEx = { "Fecha Medición", "Clave Producto", "Nombre Producto", "Vol. Disponible" };
+                for (int i = 0; i < headersEx.Length; i++)
+                {
+                    wsExistencias.Cells[row, i + 1].Value = headersEx[i];
+                }
+
+                wsExistencias.Cells[row, 1, row, 4].Style.Font.Bold = true;
+                wsExistencias.Cells[row, 1, row, 4].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsExistencias.Cells[row, 1, row, 4].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                wsExistencias.Cells[row, 1, row, 4].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+                row++;
+
+                double totalVolDisponible = 0;
+
+                foreach (var ex in existencias)
+                {
+                    wsExistencias.Cells[row, 1].Value = ex.FechaMedicion?.ToString("yyyy-MM-dd") ?? "";
+                    wsExistencias.Cells[row, 2].Value = ex.ClaveProducto ?? "";
+                    wsExistencias.Cells[row, 3].Value = ex.NombreProducto ?? "";
+                    wsExistencias.Cells[row, 4].Value = ex.VolumenDisponible;
+
+                    wsExistencias.Cells[row, 4].Style.Numberformat.Format = "#,##0.000";
+
+                    totalVolDisponible += ex.VolumenDisponible;
+                    row++;
+                }
+
+                wsExistencias.Cells[row, 1].Value = "TOTALES:";
+                wsExistencias.Cells[row, 1, row, 3].Merge = true;
+                wsExistencias.Cells[row, 1, row, 3].Style.Font.Bold = true;
+                wsExistencias.Cells[row, 1, row, 3].Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
+                wsExistencias.Cells[row, 1, row, 3].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsExistencias.Cells[row, 1, row, 3].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+                wsExistencias.Cells[row, 4].Value = totalVolDisponible;
+                wsExistencias.Cells[row, 4].Style.Numberformat.Format = "#,##0.000";
+                wsExistencias.Cells[row, 4].Style.Font.Bold = true;
+                wsExistencias.Cells[row, 4].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsExistencias.Cells[row, 4].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+                wsExistencias.Cells.AutoFitColumns();
+                wsExistencias.View.FreezePanes(5, 1);
+
+                return package.GetAsByteArray();
             }
         }
         protected void btnSoloExcel_Click(object sender, EventArgs e)
@@ -987,21 +1158,16 @@ ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
                     return;
                 }
 
-                // 1) Traer recepciones
-                List<RecepcionExcel> data = ObtenerRecepcionesExcel(inicio, fin, cs);
+                // 1) Traer recepciones, entregas y existencias
+                List<RecepcionExcel> recepciones = ObtenerRecepcionesExcel(inicio, fin, cs);
+                List<EntregaExcel> entregas = ObtenerEntregasExcel(inicio, fin, cs);
+                List<ExistenciaExcel> existencias = ObtenerExistenciasExcel(inicio, fin, cs);
 
-                if (data == null || data.Count == 0)
-                {
-                    ScriptManager.RegisterStartupScript(this, GetType(), "nodata",
-                        "Swal.fire('Advertencia','No se encontraron recepciones en el periodo seleccionado.','warning');", true);
-                    return;
-                }
-
-                // 2) Generar excel
-                byte[] bytes = GenerarExcelRecepciones(data, inicio, fin);
+                // 2) Generar excel con las 3 hojas
+                byte[] bytes = GenerarExcelCompleto(recepciones, entregas, existencias, inicio, fin);
 
                 // 3) Descargar
-                string fileName = $"Recepciones_{anio}{mes:00}.xlsx";
+                string fileName = $"ControlVolumetrico_{anio}{mes:00}.xlsx";
 
                 Response.Clear();
                 Response.Buffer = true;
@@ -1025,7 +1191,52 @@ ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
         }
 
 
+        private List<ExistenciaExcel> ObtenerExistenciasExcel(DateTime inicio, DateTime fin, string cs)
+        {
+            var list = new List<ExistenciaExcel>();
 
+            using (var cn = new SqlConnection(cs))
+            {
+                cn.Open();
+
+                var sql = @"
+
+SELECT
+    CAST(ev.FechaMedicionActual AS date) AS FechaMedicion,
+    ev.ClaveProducto,
+    p.NProdNombre AS NombreProducto,
+    sum(ev.VolumenDisponible) VolumenDisponible
+FROM dbo.existenciasvol ev
+LEFT JOIN dbo.productos p ON ev.ClaveProducto = p.NProdClave
+WHERE CAST(ev.FechaMedicionActual AS date) =  @fin
+GROUP BY  CAST(ev.FechaMedicionActual AS date),ev.ClaveProducto,p.NProdNombre
+ORDER BY CAST(ev.FechaMedicionActual AS date) , ev.ClaveProducto
+;";
+
+                using (var cmd = new SqlCommand(sql, cn))
+                {
+                    cmd.Parameters.Add("@inicio", SqlDbType.Date).Value = inicio.Date;
+                    cmd.Parameters.Add("@fin", SqlDbType.Date).Value = fin.Date;
+
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        while (dr.Read())
+                        {
+                            list.Add(new ExistenciaExcel
+                            {
+                                FechaMedicion = dr["FechaMedicion"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(dr["FechaMedicion"]),
+                                ClaveProducto = dr["ClaveProducto"]?.ToString(),
+                                NombreProducto = dr["NombreProducto"]?.ToString(),
+                                VolumenDisponible = dr["VolumenDisponible"] == DBNull.Value ? 0 : Convert.ToDouble(dr["VolumenDisponible"]),
+                
+                            });
+                        }
+                    }
+                }
+            }
+
+            return list;
+        }
 
         public class RecepcionExcel
         {
@@ -1041,5 +1252,29 @@ ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
             public double PrecioCompra { get; set; }
         }
 
+        public class EntregaExcel
+        {
+            public string UUID { get; set; }
+            public string RFCCliente { get; set; }
+            public string NombreCliente { get; set; }
+            public string PermisoCliente { get; set; }
+            public DateTime? Fecha { get; set; }
+            public string Codigo { get; set; }
+            public double Cantidad { get; set; }
+            public double Precio { get; set; }
+            public double Total { get; set; }
+        }
+
+        public class ExistenciaExcel
+        {
+            public DateTime? FechaMedicion { get; set; }
+            public string ClaveProducto { get; set; }
+            public string NombreProducto { get; set; }
+            public double VolumenInicial { get; set; }
+            public double VolumenFinal { get; set; }
+            public double VolumenDisponible { get; set; }
+            public double Temperatura { get; set; }
+            public double Altura { get; set; }
+        }
     }
 }

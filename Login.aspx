@@ -33,7 +33,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #ffffff;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -61,8 +61,9 @@
         .login-card {
             background: white;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
             overflow: hidden;
+            border: 1px solid #e0e0e0;
         }
 
         .login-header {
@@ -378,12 +379,12 @@
         }
 
         // Permitir Enter para enviar el formulario
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const form = document.getElementById('form1');
             const inputs = form.querySelectorAll('input[type="text"], input[type="password"]');
-            
+
             inputs.forEach(input => {
-                input.addEventListener('keypress', function(e) {
+                input.addEventListener('keypress', function (e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
                         const btnLogin = document.getElementById('<%= btnLogin.ClientID %>');
