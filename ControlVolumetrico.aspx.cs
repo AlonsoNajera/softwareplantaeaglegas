@@ -1,22 +1,27 @@
-﻿using System;
+﻿using iTextSharp.text;
+using iTextSharp.text.pdf;
+using Microsoft.Ajax.Utilities;
+using Newtonsoft.Json;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+using System;
 using System.Collections.Generic;
-using System.Data.SqlClient;
+using System.ComponentModel;
+using System.Configuration;
 using System.Data;
+using System.Data.SqlClient;
+using System.Drawing.Printing;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Web;
 using System.Web.Configuration;
 using System.Web.UI;
 using System.Web.UI.WebControls;
-using System.Configuration;
-using Newtonsoft.Json;
-using System.IO;
-using System.Net.NetworkInformation;
-using Microsoft.Ajax.Utilities;
-using System.IO.Compression;
-using System.Drawing.Printing;
 using System.Xml.Linq;
-using iTextSharp.text;
-using iTextSharp.text.pdf;
+using ClosedXML.Excel;
+using System.Threading;
 
 namespace SoftwarePlantas
 {
@@ -829,6 +834,211 @@ namespace SoftwarePlantas
 
                 doc.Close();
             }
+        }
+
+
+
+        private List<RecepcionExcel> ObtenerRecepcionesExcel(DateTime inicio, DateTime fin, string cs)
+        {
+            var list = new List<RecepcionExcel>();
+
+            using (var cn = new SqlConnection(cs))
+            {
+                cn.Open();
+
+                var sql = @"
+SELECT
+    Rcap.Folio,
+    RTRIM(Rcap.RFCProveedor) AS RFCProveedor,
+    RTRIM(PC.Nombre) AS NombreProveedor,
+    PC.PermisoCRE AS PermisoProveedor,
+    RTRIM(Rcap.UUID) AS UUID,
+    CAST(Rcap.FechaDocumento AS date) AS FechaDocumento,
+    CAST(Rcap.FechaRecepcion AS date) AS FechaRecepcion,
+    Rcap.FolioDocumento,
+    Rcap.VolumenPemex AS Volumen,
+    Rcap.PrecioCompra
+FROM dbo.Recepcionescap Rcap
+LEFT JOIN dbo.ProveedCombust PC ON Rcap.RFCProveedor = PC.RFC
+WHERE CAST(Rcap.FechaDocumento AS date) BETWEEN @inicio AND @fin
+ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
+
+                using (var cmd = new SqlCommand(sql, cn))
+                {
+                    cmd.Parameters.Add("@inicio", SqlDbType.Date).Value = inicio.Date;
+                    cmd.Parameters.Add("@fin", SqlDbType.Date).Value = fin.Date;
+
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        while (dr.Read())
+                        {
+                            list.Add(new RecepcionExcel
+                            {
+                                Folio = dr["Folio"]?.ToString(),
+                                RFCProveedor = dr["RFCProveedor"]?.ToString(),
+                                NombreProveedor = dr["NombreProveedor"]?.ToString(),
+                                PermisoProveedor = dr["PermisoProveedor"]?.ToString(),
+                                UUID = dr["UUID"]?.ToString(),
+                                FechaDocumento = dr["FechaDocumento"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(dr["FechaDocumento"]),
+                                FechaRecepcion = dr["FechaRecepcion"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(dr["FechaRecepcion"]),
+                                FolioDocumento = dr["FolioDocumento"]?.ToString(),
+                                Volumen = dr["Volumen"] == DBNull.Value ? 0 : Convert.ToDouble(dr["Volumen"]),
+                                PrecioCompra = dr["PrecioCompra"] == DBNull.Value ? 0 : Convert.ToDouble(dr["PrecioCompra"])
+                            });
+                        }
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        private byte[] GenerarExcelRecepciones(
+      List<RecepcionExcel> data,
+      DateTime inicio,
+      DateTime fin
+  )
+        {
+            using (var wb = new XLWorkbook())
+            {
+                var ws = wb.Worksheets.Add("Recepciones");
+
+                int row = 1;
+
+                // ===== Título =====
+                ws.Cell(row, 1).Value = "RECEPCIONES";
+                ws.Range(row, 1, row, 10).Merge();
+                ws.Range(row, 1, row, 10).Style.Font.Bold = true;
+                ws.Range(row, 1, row, 10).Style.Font.FontSize = 14;
+                ws.Range(row, 1, row, 10).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                row++;
+
+                // ===== Periodo =====
+                ws.Cell(row, 1).Value = "Periodo:";
+                ws.Cell(row, 2).Value = $"{inicio:yyyy-MM-dd} al {fin:yyyy-MM-dd}";
+                row += 2;
+
+                // ===== Encabezados =====
+                ws.Cell(row, 1).Value = "Folio";
+                ws.Cell(row, 2).Value = "RFC Proveedor";
+                ws.Cell(row, 3).Value = "Nombre";
+                ws.Cell(row, 4).Value = "Permiso";
+                ws.Cell(row, 5).Value = "UUID";
+                ws.Cell(row, 6).Value = "Fecha Documento";
+                ws.Cell(row, 7).Value = "Fecha Recepción";
+                ws.Cell(row, 8).Value = "Folio Documento";
+                ws.Cell(row, 9).Value = "Volumen";
+                ws.Cell(row, 10).Value = "Precio Compra";
+
+                ws.Range(row, 1, row, 10).Style.Font.Bold = true;
+                ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.LightGray;
+                ws.Range(row, 1, row, 10).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                ws.Range(row, 1, row, 10).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+
+                row++;
+
+                // ===== Datos =====
+                foreach (var r in data)
+                {
+                    ws.Cell(row, 1).Value = r.Folio ?? "";
+                    ws.Cell(row, 2).Value = r.RFCProveedor ?? "";
+                    ws.Cell(row, 3).Value = r.NombreProveedor ?? "";
+                    ws.Cell(row, 4).Value = r.PermisoProveedor ?? "";
+                    ws.Cell(row, 5).Value = r.UUID ?? "";
+
+                    ws.Cell(row, 6).Value = r.FechaDocumento?.ToString("yyyy-MM-dd") ?? "";
+                    ws.Cell(row, 7).Value = r.FechaRecepcion?.ToString("yyyy-MM-dd") ?? "";
+
+                    ws.Cell(row, 8).Value = r.FolioDocumento ?? "";
+                    ws.Cell(row, 9).Value = r.Volumen;
+                    ws.Cell(row, 10).Value = r.PrecioCompra;
+
+                    ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0.000";
+                    ws.Cell(row, 10).Style.NumberFormat.Format = "#,##0.00";
+
+                    row++;
+                }
+
+                // ===== Ajustes finales =====
+                ws.Columns().AdjustToContents();
+                ws.SheetView.FreezeRows(4);
+
+                using (var ms = new MemoryStream())
+                {
+                    wb.SaveAs(ms);
+                    return ms.ToArray();
+                }
+            }
+        }
+        protected void btnSoloExcel_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                int mes = int.Parse(ddlMes.SelectedValue);
+                int anio = int.Parse(ddlAnio.SelectedValue);
+                DateTime inicio = new DateTime(anio, mes, 1);
+                DateTime fin = inicio.AddMonths(1).AddDays(-1);
+
+                string cs = Session["instanciaSeleccionada"]?.ToString();
+                if (string.IsNullOrWhiteSpace(cs))
+                {
+                    ScriptManager.RegisterStartupScript(this, GetType(), "err",
+                        "Swal.fire('Error','No hay instancia seleccionada.','error');", true);
+                    return;
+                }
+
+                // 1) Traer recepciones
+                List<RecepcionExcel> data = ObtenerRecepcionesExcel(inicio, fin, cs);
+
+                if (data == null || data.Count == 0)
+                {
+                    ScriptManager.RegisterStartupScript(this, GetType(), "nodata",
+                        "Swal.fire('Advertencia','No se encontraron recepciones en el periodo seleccionado.','warning');", true);
+                    return;
+                }
+
+                // 2) Generar excel
+                byte[] bytes = GenerarExcelRecepciones(data, inicio, fin);
+
+                // 3) Descargar
+                string fileName = $"Recepciones_{anio}{mes:00}.xlsx";
+
+                Response.Clear();
+                Response.Buffer = true;
+                Response.Charset = "";
+                Response.Cache.SetCacheability(HttpCacheability.NoCache);
+                Response.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                Response.AddHeader("Content-Disposition", $"attachment; filename=\"{fileName}\"");
+                Response.BinaryWrite(bytes);
+                Response.Flush();
+                Response.End();
+            }
+            catch (ThreadAbortException)
+            {
+                // Esto es normal después de Response.End(), no hacer nada
+            }
+            catch (Exception ex)
+            {
+                ScriptManager.RegisterStartupScript(this, GetType(), "err",
+                    $"Swal.fire('Error','{ex.Message.Replace("'", "\\'").Replace("\r", "").Replace("\n", "")}','error');", true);
+            }
+        }
+
+
+
+
+        public class RecepcionExcel
+        {
+            public string Folio { get; set; }
+            public string RFCProveedor { get; set; }
+            public string NombreProveedor { get; set; }
+            public string PermisoProveedor { get; set; }
+            public string UUID { get; set; }
+            public DateTime? FechaDocumento { get; set; }
+            public DateTime? FechaRecepcion { get; set; }
+            public string FolioDocumento { get; set; }
+            public double Volumen { get; set; }
+            public double PrecioCompra { get; set; }
         }
 
     }

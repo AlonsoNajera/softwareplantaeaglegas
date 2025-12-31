@@ -85,13 +85,34 @@
                     <div class="d-grid gap-2 d-md-flex justify-content-md-center">
                         <asp:Button ID="btnGenerarJson" runat="server" CssClass="btn btn-primary btn-lg" Text="Generar JSON" OnClick="btnGenerarJson_Click" />
                         <asp:Button ID="btnSoloPDF" runat="server" Text="Generar Solo PDF" CssClass="btn btn-warning btn-lg" OnClick="btnSoloPDF_Click" />
+                        <asp:Button ID="btnSoloExcel" runat="server"
+    Text="Descargar Recepciones Excel"
+    CssClass="btn btn-success btn-lg"
+    OnClick="btnSoloExcel_Click"
+    OnClientClick="mostrarCargandoExcel(); return true;" />
+
+
                     </div>
                 </div>
             </div>
         </div>
     </form>
 </div>
+    <script>
+        function mostrarCargandoExcel() {
+            Swal.fire({
+                title: 'Generando Excel...',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                didOpen: () => Swal.showLoading()
+            });
 
+            // Cerrar el SweetAlert después de 3 segundos (ajusta según tu caso)
+            setTimeout(function () {
+                Swal.close();
+            }, 3000);
+        }
+</script>
 <script>
     function toggleMenu() {
         var sidebar = document.getElementById("sidebarMenu");
