@@ -850,7 +850,9 @@ namespace SoftwarePlantas
                 cn.Open();
 
                 var sql = @"
-SELECT
+ SELECT
+    Rcap.ClaveProducto,
+	Rcap.Producto,
     Rcap.Folio,
     RTRIM(Rcap.RFCProveedor) AS RFCProveedor,
     RTRIM(PC.Nombre) AS NombreProveedor,
@@ -863,8 +865,8 @@ SELECT
     Rcap.PrecioCompra
 FROM dbo.Recepcionescap Rcap
 LEFT JOIN dbo.ProveedCombust PC ON Rcap.RFCProveedor = PC.RFC
-WHERE CAST(Rcap.FechaDocumento AS date) BETWEEN @inicio AND @fin
-ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
+WHERE CAST(Rcap.FechaDocumento AS date)  BETWEEN @inicio AND @fin
+ORDER BY Rcap.ClaveProducto,Rcap.FechaDocumento, Rcap.Folio;";
 
                 using (var cmd = new SqlCommand(sql, cn))
                 {
@@ -877,6 +879,7 @@ ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
                         {
                             list.Add(new RecepcionExcel
                             {
+
                                 Folio = dr["Folio"]?.ToString(),
                                 RFCProveedor = dr["RFCProveedor"]?.ToString(),
                                 NombreProveedor = dr["NombreProveedor"]?.ToString(),
@@ -886,7 +889,9 @@ ORDER BY Rcap.FechaDocumento, Rcap.Folio;";
                                 FechaRecepcion = dr["FechaRecepcion"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(dr["FechaRecepcion"]),
                                 FolioDocumento = dr["FolioDocumento"]?.ToString(),
                                 Volumen = dr["Volumen"] == DBNull.Value ? 0 : Convert.ToDouble(dr["Volumen"]),
-                                PrecioCompra = dr["PrecioCompra"] == DBNull.Value ? 0 : Convert.ToDouble(dr["PrecioCompra"])
+                                PrecioCompra = dr["PrecioCompra"] == DBNull.Value ? 0 : Convert.ToDouble(dr["PrecioCompra"]),
+                                ClaveProducto = dr["ClaveProducto"]?.ToString(),
+                                Producto = dr["Producto"]?.ToString()
                             });
                         }
                     }
@@ -917,7 +922,7 @@ FROM dbo.Documentos D
 INNER JOIN dbo.DocumentosDetalle DD ON D.UUID = DD.UUID
 WHERE CAST(D.Fecha AS date) BETWEEN @inicio AND @fin
 GROUP BY  D.UUID,  RTRIM(D.RFC),RTRIM(D.RazonSocial),CAST(D.Fecha AS date),    DD.Codigo,  D.Total
-ORDER BY CAST(D.Fecha AS date)
+ORDER BY Codigo,CAST(D.Fecha AS date)
 ;";
 
                 using (var cmd = new SqlCommand(sql, cn))
@@ -976,16 +981,16 @@ ORDER BY CAST(D.Fecha AS date)
                 // Encabezados
                 string[] headersR = { "Folio", "RFC Proveedor", "Nombre", "Permiso", "UUID",
                              "Fecha Documento", "Fecha Recepción", "Folio Documento",
-                             "Volumen", "Precio Compra" };
+                             "Volumen", "Precio Compra","ClaveProducto","Producto" };
                 for (int i = 0; i < headersR.Length; i++)
                 {
                     wsRecepciones.Cells[row, i + 1].Value = headersR[i];
                 }
 
-                wsRecepciones.Cells[row, 1, row, 10].Style.Font.Bold = true;
-                wsRecepciones.Cells[row, 1, row, 10].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                wsRecepciones.Cells[row, 1, row, 10].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
-                wsRecepciones.Cells[row, 1, row, 10].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+                wsRecepciones.Cells[row, 1, row, 12].Style.Font.Bold = true;
+                wsRecepciones.Cells[row, 1, row, 12].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                wsRecepciones.Cells[row, 1, row, 12].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+                wsRecepciones.Cells[row, 1, row, 12].Style.Border.BorderAround(ExcelBorderStyle.Thin);
                 row++;
 
                 foreach (var r in recepciones)
@@ -1000,6 +1005,8 @@ ORDER BY CAST(D.Fecha AS date)
                     wsRecepciones.Cells[row, 8].Value = r.FolioDocumento ?? "";
                     wsRecepciones.Cells[row, 9].Value = r.Volumen;
                     wsRecepciones.Cells[row, 10].Value = r.PrecioCompra;
+                    wsRecepciones.Cells[row, 11].Value = r.ClaveProducto;
+                    wsRecepciones.Cells[row, 12].Value = r.Producto;
 
                     wsRecepciones.Cells[row, 9].Style.Numberformat.Format = "#,##0.000";
                     wsRecepciones.Cells[row, 10].Style.Numberformat.Format = "#,##0.00";
@@ -1240,6 +1247,8 @@ ORDER BY CAST(ev.FechaMedicionActual AS date) , ev.ClaveProducto
 
         public class RecepcionExcel
         {
+            public string ClaveProducto { get; set; }
+            public string Producto { get; set; }
             public string Folio { get; set; }
             public string RFCProveedor { get; set; }
             public string NombreProveedor { get; set; }
