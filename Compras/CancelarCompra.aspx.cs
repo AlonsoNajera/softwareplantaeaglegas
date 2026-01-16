@@ -1,36 +1,34 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Configuration;
-using System.Data.SqlClient;
 using System.Data;
-using System.Linq;
+using System.Data.SqlClient;
+using System.Globalization;
 using System.Web;
 using System.Web.Configuration;
 using System.Web.UI;
 using System.Web.UI.WebControls;
-using System.Globalization;
 
 namespace SoftwarePlantas.Compras
 {
     public partial class CancelarCompra : System.Web.UI.Page
     {
         string instancia = string.Empty;
+
         protected void Page_Load(object sender, EventArgs e)
         {
             // Evitar el almacenamiento en caché
             Response.Cache.SetExpires(DateTime.UtcNow.AddMinutes(-1));
             Response.Cache.SetCacheability(HttpCacheability.NoCache);
             Response.Cache.SetNoStore();
+
             if (Session["IdUsuario"] == null || Session["Nombre"] == null)
             {
-                // Si la sesión ha expirado o el usuario no está autenticado, redirigir a Login.aspx
                 Response.Redirect("~/Login.aspx");
+                return;
             }
-            else
-            {
-                // Establecer el mensaje de bienvenida con el nombre del usuario
-                lblWelcome.Text = $"Bienvenido, {Session["Nombre"].ToString()}!";
-            }
+
+            lblWelcome.Text = $"Bienvenido, {Session["Nombre"].ToString()}!";
+
             if (!IsPostBack)
             {
                 CargarEstaciones();
@@ -38,16 +36,18 @@ namespace SoftwarePlantas.Compras
                 txtFechaInicial.Text = DateTime.Now.ToString("yyyy-MM-dd");
                 txtFechaFinal.Text = DateTime.Now.ToString("yyyy-MM-dd");
 
+                // Cargar catálogo para el modal (si ya hay instancia seleccionada, se llenará)
+                // Si aún no hay instancia, se vuelve a cargar cuando se seleccione estación.
+                CargarProveedoresModalSafe();
             }
 
+            // Eliminar por __doPostBack
             if (Request["__EVENTTARGET"] == "btnEliminar" && Request["__EVENTARGUMENT"] != null)
             {
                 string folio = Request["__EVENTARGUMENT"];
                 EliminarRecepcion(folio);
             }
-         
         }
-
 
         private void CargarEstaciones()
         {
@@ -57,10 +57,10 @@ namespace SoftwarePlantas.Compras
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
                 string query = @"
-            SELECT e.Id, e.Nombre 
-            FROM estaciones e
-            INNER JOIN UsersEstaciones ue ON e.Id = ue.idEstacion
-            WHERE ue.idUsuario = @IdUsuario";
+                    SELECT e.Id, e.Nombre 
+                    FROM estaciones e
+                    INNER JOIN UsersEstaciones ue ON e.Id = ue.idEstacion
+                    WHERE ue.idUsuario = @IdUsuario";
 
                 SqlDataAdapter adapter = new SqlDataAdapter(query, connection);
                 adapter.SelectCommand.Parameters.AddWithValue("@IdUsuario", IdUsuario);
@@ -77,7 +77,6 @@ namespace SoftwarePlantas.Compras
             ddlEstacion.Items.Insert(0, new ListItem("Selecciona una estación", ""));
         }
 
-
         private bool VerificarConexionBaseDatos(string connectionString)
         {
             try
@@ -85,12 +84,12 @@ namespace SoftwarePlantas.Compras
                 using (SqlConnection testConnection = new SqlConnection(connectionString))
                 {
                     testConnection.Open();
-                    return true; // Conexión exitosa
+                    return true;
                 }
             }
             catch
             {
-                return false; // Fallo de conexión
+                return false;
             }
         }
 
@@ -98,52 +97,93 @@ namespace SoftwarePlantas.Compras
         {
             string estacionId = ddlEstacion.SelectedValue;
 
-
             string connectionString = ConfigurationManager.ConnectionStrings["ConexionBD"].ConnectionString;
 
             // Consulta para obtener el valor de 'instancia' usando el ID de la estación seleccionada
             string query = "SELECT instancia FROM estaciones WHERE Id = @Id";
             using (SqlConnection connection = new SqlConnection(connectionString))
+            using (SqlCommand command = new SqlCommand(query, connection))
             {
-                using (SqlCommand command = new SqlCommand(query, connection))
-                {
-                    command.Parameters.AddWithValue("@Id", estacionId);
-                    connection.Open();
-                    instancia = command.ExecuteScalar()?.ToString();
-                    connection.Close();
-                }
+                command.Parameters.AddWithValue("@Id", estacionId);
+                connection.Open();
+                instancia = command.ExecuteScalar()?.ToString();
             }
 
-
-            if (instancia is null)
+            if (string.IsNullOrEmpty(instancia))
             {
-                // Si la conexión falla, muestra un mensaje de error y detiene la ejecución
-                ScriptManager.RegisterStartupScript(this, this.GetType(), "alert", "Swal.fire('Error', 'Selecciona una Estacion.', 'error');", true);
-
+                ScriptManager.RegisterStartupScript(this, this.GetType(),
+                    "alert", "Swal.fire('Error', 'Selecciona una Estacion.', 'error');", true);
                 return;
-
             }
 
+            // Construye la cadena de conexión de la instancia seleccionada
+            string instanciaConnectionString = $"Server={instancia};Database=Admingas;User Id=sa;Password=$Aes220213Nu4&;";
+
+            if (VerificarConexionBaseDatos(instanciaConnectionString))
+            {
+                Session["instanciaSeleccionada"] = instanciaConnectionString;
+
+                // Cargar proveedores para el modal ahora que ya hay instancia
+                CargarProveedoresModalSafe();
+
+                // Recargar datos
+                btnBuscar_Click(null, EventArgs.Empty);
+            }
             else
             {
-                // Construye la cadena de conexión de la instancia seleccionada
-                string instanciaConnectionString = $"Server={instancia};Database=Admingas;User Id=sa;Password=$Aes220213Nu4&;";
+                ScriptManager.RegisterStartupScript(this, this.GetType(),
+                    "alert", "Swal.fire('Error', 'No se pudo establecer conexión con la base de datos.', 'error');", true);
+            }
+        }
 
-                // Llama al método para verificar la conexión
-                if (VerificarConexionBaseDatos(instanciaConnectionString))
-                {
-                    // Si la conexión es exitosa, guarda la instancia en la sesión
-                    Session["instanciaSeleccionada"] = instanciaConnectionString;
-                    // Recargar los datos en el GridView
-                    btnBuscar_Click(null, EventArgs.Empty);
-                }
-                else
-                {
-                    // Si la conexión falla, muestra un mensaje de error y detiene la ejecución
-                    ScriptManager.RegisterStartupScript(this, this.GetType(), "alert", "Swal.fire('Error', 'No se pudo establecer conexión con la base de datos.', 'error');", true);
-                }
+        protected void btnBuscar_Click(object sender, EventArgs e)
+        {
+            string fechaInicio = txtFechaInicial.Text;
+            string fechaFin = txtFechaFinal.Text;
+
+            string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
+
+            if (string.IsNullOrEmpty(instanciaConnectionString))
+            {
+                ScriptManager.RegisterStartupScript(this, GetType(), "error",
+                    "Swal.fire('Error', 'Instancia no seleccionada.', 'error');", true);
+                return;
             }
 
+            DataTable dt = new DataTable();
+
+            using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
+            {
+                string query = @"
+                    SELECT 
+                        R.Folio,
+                        R.Tanque,
+                        R.Producto,
+                        R.VolumenRecepcion,
+                        RCAP.FechaDocumento,
+                        RCAP.VolumenPemex AS VolumenCapturado,
+                        RCAP.FolioDocumento,
+                        RCAP.UUID,
+                        RCAP.ClaveVehiculo,
+                        RCAP.TransCRE,
+                        RCAP.PrecioCompra,
+                        TRIM(RCAP.RFCProveedor) AS RFCProveedor,
+                        RCAP.Id
+                    FROM Recepciones R 
+                    INNER JOIN Recepcionescap RCAP ON R.Folio = RCAP.Folio
+                    WHERE CAST(RCAP.FechaDocumento AS DATE) BETWEEN @Inicio AND @Fin";
+
+                SqlCommand cmd = new SqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@Inicio", fechaInicio);
+                cmd.Parameters.AddWithValue("@Fin", fechaFin);
+
+                SqlDataAdapter da = new SqlDataAdapter(cmd);
+                da.Fill(dt);
+            }
+
+            gvRecepciones.DataSource = dt;
+            gvRecepciones.DataBind();
+            pnlResultados.Visible = true;
         }
 
         private void EliminarRecepcion(string folio)
@@ -170,15 +210,27 @@ namespace SoftwarePlantas.Compras
 
                 try
                 {
-                    // 🔄 Actualizar Recepciones usando Folio
-                    string updateRecepcion = "UPDATE Recepciones SET Estado = 0,UUID='',TransCRE='',ClaveVehiculo='',VolumenPemex=0,FolioDocumento=0,FechaDocumento=NULL,TipoDocumento='',TeminalAlmacenamiento='' WHERE Folio = @Folio";
+                    // Actualizar Recepciones usando Folio
+                    string updateRecepcion = @"
+                        UPDATE Recepciones
+                        SET Estado = 0,
+                            UUID='',
+                            TransCRE='',
+                            ClaveVehiculo='',
+                            VolumenPemex=0,
+                            FolioDocumento=0,
+                            FechaDocumento=NULL,
+                            TipoDocumento='',
+                            TeminalAlmacenamiento=''
+                        WHERE Folio = @Folio";
+
                     using (SqlCommand cmd1 = new SqlCommand(updateRecepcion, conn, trans))
                     {
                         cmd1.Parameters.AddWithValue("@Folio", folio);
                         cmd1.ExecuteNonQuery();
                     }
 
-                    // ❌ Eliminar de RecepcionesCap usando Folio
+                    // Eliminar de RecepcionesCap usando Folio
                     string deleteRelacionada = "DELETE FROM Recepcionescap WHERE Folio = @Folio";
                     using (SqlCommand cmd2 = new SqlCommand(deleteRelacionada, conn, trans))
                     {
@@ -186,138 +238,41 @@ namespace SoftwarePlantas.Compras
                         cmd2.ExecuteNonQuery();
                     }
 
-                    trans.Commit(); // ✅ Confirmar ambas acciones
+                    trans.Commit();
                 }
                 catch (Exception ex)
                 {
                     trans.Rollback();
                     ScriptManager.RegisterStartupScript(this, GetType(), "error",
-                        $"Swal.fire('Error', 'Error al cancelar: {ex.Message}', 'error');", true);
+                        $"Swal.fire('Error', 'Error al cancelar: {EscapeJs(ex.Message)}', 'error');", true);
                     return;
                 }
             }
 
-            // ✅ Mensaje de éxito
             ScriptManager.RegisterStartupScript(this, GetType(), "exito",
-                $"Swal.fire('Eliminado', 'Folio {folio} cancelado correctamente.', 'success');", true);
+                $"Swal.fire('Eliminado', 'Folio {EscapeJs(folio)} cancelado correctamente.', 'success');", true);
 
-            // 🔄 Recargar datos
             btnBuscar_Click(null, null);
         }
 
+        // ============================
+        // PROVEEDORES (MODAL)
+        // ============================
 
-
-        protected void gvRecepciones_RowEditing(object sender, GridViewEditEventArgs e)
+        private void CargarProveedoresModalSafe()
         {
-            gvRecepciones.EditIndex = e.NewEditIndex;
-            // 🔄 Recargar datos
-            btnBuscar_Click(null, null);
-        }
-
-        protected void gvRecepciones_RowCancelingEdit(object sender, GridViewCancelEditEventArgs e)
-        {
-            gvRecepciones.EditIndex = -1;
-            // 🔄 Recargar datos
-            btnBuscar_Click(null, null);
-        }
-
-        protected void gvRecepciones_RowUpdating(object sender, GridViewUpdateEventArgs e)
-        {
+            // Si todavía no hay instancia seleccionada, no intentes cargar proveedores.
             string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
-            GridViewRow row = gvRecepciones.Rows[e.RowIndex];
-            string id = gvRecepciones.DataKeys[e.RowIndex].Value.ToString();
+            if (string.IsNullOrEmpty(instanciaConnectionString)) return;
 
-            string fecha = ((TextBox)row.FindControl("txtFecha")).Text;
-            string volumenCapturado = ((TextBox)row.FindControl("txtVolumenCapturado")).Text;
-            string folioDoc = ((TextBox)row.FindControl("txtFolioDocumento")).Text;
-            string uuid = ((TextBox)row.FindControl("txtUUID")).Text;
-            string claveVehiculo = ((TextBox)row.FindControl("txtClaveVehiculo")).Text;
-            string transCRE = ((TextBox)row.FindControl("txtTransCRE")).Text;
-            string precioCompra = ((TextBox)row.FindControl("txtPrecioCompra")).Text;
-            string rfcProveedor = ((DropDownList)row.FindControl("ddlRFCProveedor")).SelectedValue;
+            DataTable proveedores = ObtenerProveedores();
 
-            using (SqlConnection con = new SqlConnection(instanciaConnectionString))
-            {
-                con.Open();
-                string query = @"UPDATE RecepcionesCap
-                         SET FechaDocumento = @Fecha, 
-                             VolumenPemex = @VolumenCapturado,
-                             FolioDocumento = @FolioDocumento, 
-                             UUID = @UUID, 
-                             ClaveVehiculo = @ClaveVehiculo,
-                             TransCRE = @TransCRE, 
-                             PrecioCompra = @PrecioCompra,
-                             RFCProveedor = @RFCProveedor
-                         WHERE Id = @Id";
+            ddlProveedorModal.DataSource = proveedores;
+            ddlProveedorModal.DataTextField = "Nombre";
+            ddlProveedorModal.DataValueField = "RFC";
+            ddlProveedorModal.DataBind();
 
-                using (SqlCommand cmd = new SqlCommand(query, con))
-                {
-                    cmd.Parameters.AddWithValue("@Fecha", DateTime.ParseExact(fecha, "yyyy-MM-dd", CultureInfo.InvariantCulture));
-                    cmd.Parameters.AddWithValue("@VolumenCapturado", volumenCapturado);
-                    cmd.Parameters.AddWithValue("@FolioDocumento", folioDoc);
-                    cmd.Parameters.AddWithValue("@UUID", uuid);
-                    cmd.Parameters.AddWithValue("@ClaveVehiculo", claveVehiculo);
-                    cmd.Parameters.AddWithValue("@TransCRE", transCRE);
-                    cmd.Parameters.AddWithValue("@PrecioCompra", precioCompra);
-                    cmd.Parameters.AddWithValue("@RFCProveedor", rfcProveedor);
-                    cmd.Parameters.AddWithValue("@Id", id);
-                    cmd.ExecuteNonQuery();
-                }
-            }
-
-            gvRecepciones.EditIndex = -1;
-            btnBuscar_Click(null, null);
-        }
-
-
-        protected void btnBuscar_Click(object sender, EventArgs e)
-        {
-            string fechaInicio = txtFechaInicial.Text;
-            string fechaFin = txtFechaFinal.Text;
-
-            string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
-
-            if (string.IsNullOrEmpty(instanciaConnectionString))
-            {
-                ScriptManager.RegisterStartupScript(this, GetType(), "error",
-                    "Swal.fire('Error', 'Instancia no seleccionada.', 'error');", true);
-                return;
-            }
-
-            DataTable dt = new DataTable();
-
-            using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
-            {
-                string query = @"
-            SELECT 
-                R.Folio,
-                R.Tanque,
-                R.Producto,
-                R.VolumenRecepcion,
-                RCAP.FechaDocumento,
-                RCAP.VolumenPemex AS VolumenCapturado,
-                RCAP.FolioDocumento,
-                RCAP.UUID,
-                RCAP.ClaveVehiculo,
-                RCAP.TransCRE,
-                RCAP.PrecioCompra,
-                RCAP.RFCProveedor,
-                RCAP.Id 
-            FROM Recepciones R 
-            INNER JOIN Recepcionescap RCAP ON R.Folio = RCAP.Folio
-            WHERE CAST(RCAP.FechaDocumento AS DATE) BETWEEN @Inicio AND @Fin";
-
-                SqlCommand cmd = new SqlCommand(query, conn);
-                cmd.Parameters.AddWithValue("@Inicio", fechaInicio);
-                cmd.Parameters.AddWithValue("@Fin", fechaFin);
-
-                SqlDataAdapter da = new SqlDataAdapter(cmd);
-                da.Fill(dt);
-            }
-
-            gvRecepciones.DataSource = dt;
-            gvRecepciones.DataBind();
-            pnlResultados.Visible = true;
+            ddlProveedorModal.Items.Insert(0, new ListItem("Seleccione...", ""));
         }
 
         private DataTable ObtenerProveedores()
@@ -327,7 +282,7 @@ namespace SoftwarePlantas.Compras
 
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
-                string query = "SELECT RFC, Nombre FROM ProveedCombust ORDER BY Nombre";
+                string query = "SELECT TRIM(RFC) AS RFC, Nombre FROM ProveedCombust ORDER BY Nombre";
                 SqlCommand cmd = new SqlCommand(query, conn);
                 SqlDataAdapter da = new SqlDataAdapter(cmd);
                 da.Fill(dt);
@@ -336,31 +291,226 @@ namespace SoftwarePlantas.Compras
             return dt;
         }
 
-        protected void gvRecepciones_RowDataBound(object sender, GridViewRowEventArgs e)
-        {
-            if (e.Row.RowType == DataControlRowType.DataRow && (e.Row.RowState & DataControlRowState.Edit) == DataControlRowState.Edit)
-            {
-                DropDownList ddlProveedor = (DropDownList)e.Row.FindControl("ddlRFCProveedor");
-                if (ddlProveedor != null)
-                {
-                    DataTable proveedores = ObtenerProveedores();
-                    ddlProveedor.DataSource = proveedores;
-                    ddlProveedor.DataTextField = "Nombre";
-                    ddlProveedor.DataValueField = "RFC";
-                    ddlProveedor.DataBind();
+        // ============================
+        // ABRIR MODAL DESDE GRIDVIEW
+        // ============================
 
-                    // Seleccionar el valor actual
-                    DataRowView rowView = (DataRowView)e.Row.DataItem;
-                    if (rowView != null && rowView["RFCProveedor"] != DBNull.Value)
+        protected void gvRecepciones_RowCommand(object sender, GridViewCommandEventArgs e)
+        {
+            if (e.CommandName == "OpenEditModal")
+            {
+                try
+                {
+                    string id = e.CommandArgument.ToString();
+                    string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
+
+                    DataTable dt = new DataTable();
+                    using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
                     {
-                        string rfcActual = rowView["RFCProveedor"].ToString();
-                        if (!string.IsNullOrEmpty(rfcActual) && ddlProveedor.Items.FindByValue(rfcActual) != null)
-                        {
-                            ddlProveedor.SelectedValue = rfcActual;
-                        }
+                        string query = @"
+                            SELECT 
+                                RCAP.Id,
+                                RCAP.FechaDocumento,
+                                RCAP.VolumenPemex AS VolumenCapturado,
+                                RCAP.FolioDocumento,
+                                RCAP.UUID,
+                                RCAP.ClaveVehiculo,
+                                RCAP.TransCRE,
+                                RCAP.PrecioCompra,
+                                RTRIM(RCAP.RFCProveedor) AS RFCProveedor
+                            FROM Recepcionescap RCAP
+                            WHERE RCAP.Id = @Id";
+
+                        SqlCommand cmd = new SqlCommand(query, conn);
+                        cmd.Parameters.AddWithValue("@Id", id);
+
+                        SqlDataAdapter da = new SqlDataAdapter(cmd);
+                        da.Fill(dt);
+                    }
+
+                    if (dt.Rows.Count > 0)
+                    {
+                        DataRow row = dt.Rows[0];
+                        
+                        // Guardar el Id
+                        hfId.Value = id;
+                        
+                        // Cargar proveedores
+                        ddlProveedorModal.DataSource = ObtenerProveedores();
+                        ddlProveedorModal.DataTextField = "Nombre";
+                        ddlProveedorModal.DataValueField = "RFC";
+                        ddlProveedorModal.DataBind();
+                        
+                        // Formatear fecha
+                        string fechaDoc = row["FechaDocumento"] != DBNull.Value 
+                            ? Convert.ToDateTime(row["FechaDocumento"]).ToString("yyyy-MM-dd") 
+                            : "";
+                        
+                        // Escapar valores para JavaScript
+                        string script = string.Format(@"
+                            setTimeout(function() {{
+                                abrirModalEditar({{
+                                    fechaDocumento: '{0}',
+                                    volumenCapturado: '{1}',
+                                    folioDocumento: '{2}',
+                                    uuid: '{3}',
+                                    claveVehiculo: '{4}',
+                                    transCRE: '{5}',
+                                    precioCompra: '{6}',
+                                    rfcProveedor: '{7}'
+                                }});
+                            }}, 100);
+                        ", 
+                            fechaDoc,
+                            row["VolumenCapturado"].ToString().Replace("'", "\\'"),
+                            row["FolioDocumento"].ToString().Replace("'", "\\'"),
+                            row["UUID"].ToString().Replace("'", "\\'"),
+                            row["ClaveVehiculo"].ToString().Replace("'", "\\'"),
+                            row["TransCRE"].ToString().Replace("'", "\\'"),
+                            row["PrecioCompra"].ToString().Replace("'", "\\'"),
+                            row["RFCProveedor"].ToString().Replace("'", "\\'")
+                        );
+                        
+                        ScriptManager.RegisterStartupScript(this, GetType(), "openModal_" + id, script, true);
                     }
                 }
+                catch (Exception ex)
+                {
+                    ScriptManager.RegisterStartupScript(this, GetType(), "error",
+                        $"Swal.fire('Error', 'Error al abrir el modal: {ex.Message.Replace("'", "\\'")}', 'error');", true);
+                }
             }
+        }
+
+        private DataRow ObtenerRecepcionPorId(int id)
+        {
+            string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
+
+            using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
+            {
+                string query = @"
+                    SELECT
+                        RCAP.Id,
+                        RCAP.FechaDocumento,
+                        RCAP.VolumenPemex AS VolumenCapturado,
+                        RCAP.FolioDocumento,
+                        RCAP.UUID,
+                        RCAP.ClaveVehiculo,
+                        RCAP.TransCRE,
+                        RCAP.PrecioCompra,
+                        TRIM(RCAP.RFCProveedor) AS RFCProveedor
+                    FROM Recepcionescap RCAP
+                    WHERE RCAP.Id = @Id";
+
+                using (SqlCommand cmd = new SqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    SqlDataAdapter da = new SqlDataAdapter(cmd);
+                    DataTable dt = new DataTable();
+                    da.Fill(dt);
+
+                    if (dt.Rows.Count == 0) return null;
+                    return dt.Rows[0];
+                }
+            }
+        }
+
+        // ============================
+        // GUARDAR DESDE MODAL
+        // ============================
+
+        protected void btnGuardarModal_Click(object sender, EventArgs e)
+        {
+            string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
+            if (string.IsNullOrEmpty(instanciaConnectionString))
+            {
+                ScriptManager.RegisterStartupScript(this, GetType(), "error",
+                    "Swal.fire('Error', 'Instancia no seleccionada.', 'error');", true);
+                return;
+            }
+
+            if (!int.TryParse(hfId.Value, out int id))
+            {
+                ScriptManager.RegisterStartupScript(this, GetType(), "error",
+                    "Swal.fire('Error', 'Id inválido.', 'error');", true);
+                return;
+            }
+
+            // Fecha
+            DateTime? fechaDocumento = null;
+            if (!string.IsNullOrWhiteSpace(hfFechaDocumento.Value))
+            {
+                if (DateTime.TryParseExact(hfFechaDocumento.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out DateTime f))
+                {
+                    fechaDocumento = f;
+                }
+            }
+
+            // Resto
+            string volumenCapturado = hfVolumenCapturado.Value;
+            string folioDoc = hfFolioDocumento.Value;
+            string uuid = hfUUID.Value;
+            string claveVehiculo = hfClaveVehiculo.Value;
+            string transCRE = hfTransCRE.Value;
+            string precioCompra = hfPrecioCompra.Value;
+            string rfcProveedor = (hfRFCProveedor.Value ?? "").Trim().ToUpperInvariant();
+
+            using (SqlConnection con = new SqlConnection(instanciaConnectionString))
+            {
+                con.Open();
+
+                string query = @"
+                    UPDATE RecepcionesCap
+                    SET FechaDocumento = @Fecha,
+                        VolumenPemex = @VolumenCapturado,
+                        FolioDocumento = @FolioDocumento,
+                        UUID = @UUID,
+                        ClaveVehiculo = @ClaveVehiculo,
+                        TransCRE = @TransCRE,
+                        PrecioCompra = @PrecioCompra,
+                        RFCProveedor = @RFCProveedor
+                    WHERE Id = @Id";
+
+                using (SqlCommand cmd = new SqlCommand(query, con))
+                {
+                    // Fecha puede ser null
+                    if (fechaDocumento.HasValue)
+                        cmd.Parameters.AddWithValue("@Fecha", fechaDocumento.Value);
+                    else
+                        cmd.Parameters.AddWithValue("@Fecha", DBNull.Value);
+
+                    cmd.Parameters.AddWithValue("@VolumenCapturado", volumenCapturado);
+                    cmd.Parameters.AddWithValue("@FolioDocumento", folioDoc);
+                    cmd.Parameters.AddWithValue("@UUID", uuid);
+                    cmd.Parameters.AddWithValue("@ClaveVehiculo", claveVehiculo);
+                    cmd.Parameters.AddWithValue("@TransCRE", transCRE);
+                    cmd.Parameters.AddWithValue("@PrecioCompra", precioCompra);
+                    cmd.Parameters.AddWithValue("@RFCProveedor", rfcProveedor);
+                    cmd.Parameters.AddWithValue("@Id", id);
+
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            // Refrescar grid
+            btnBuscar_Click(null, null);
+
+            ScriptManager.RegisterStartupScript(this, GetType(), "ok",
+                "Swal.fire('Guardado', 'Se actualizaron los datos correctamente.', 'success');", true);
+        }
+
+        // ============================
+        // UTILIDAD
+        // ============================
+
+        private string EscapeJs(string s)
+        {
+            return (s ?? "")
+                .Replace("\\", "\\\\")
+                .Replace("'", "\\'")
+                .Replace("\r", "")
+                .Replace("\n", "");
         }
 
         protected string ObtenerNombreProveedor(string rfc)
@@ -373,10 +523,10 @@ namespace SoftwarePlantas.Compras
 
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
-                string query = "SELECT Nombre FROM ProveedCombust WHERE RFC = @RFC";
+                string query = "SELECT Nombre FROM ProveedCombust WHERE TRIM(RFC) = @RFC";
                 SqlCommand cmd = new SqlCommand(query, conn);
-                cmd.Parameters.AddWithValue("@RFC", rfc);
-                
+                cmd.Parameters.AddWithValue("@RFC", (rfc ?? "").Trim());
+
                 conn.Open();
                 object result = cmd.ExecuteScalar();
                 if (result != null)
