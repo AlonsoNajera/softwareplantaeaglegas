@@ -88,6 +88,7 @@
                         OnRowEditing="gvRecepciones_RowEditing"
                         OnRowCancelingEdit="gvRecepciones_RowCancelingEdit"
                         OnRowUpdating="gvRecepciones_RowUpdating"
+                         OnRowDataBound="gvRecepciones_RowDataBound"
                         DataKeyNames="Id">
                         <Columns>
                             <asp:TemplateField HeaderText="Id">
@@ -182,6 +183,16 @@
                                 </ItemTemplate>
                                 <EditItemTemplate>
                                     <asp:TextBox ID="txtPrecioCompra" runat="server" CssClass="form-control" Text='<%# Bind("PrecioCompra") %>' />
+                                </EditItemTemplate>
+                            </asp:TemplateField>
+
+                            <asp:TemplateField HeaderText="Proveedor">
+                                <ItemTemplate>
+                                    <%# ObtenerNombreProveedor(Eval("RFCProveedor").ToString()) %>
+                                </ItemTemplate>
+                                <EditItemTemplate>
+                                    <asp:DropDownList ID="ddlRFCProveedor" runat="server" CssClass="form-control">
+                                    </asp:DropDownList>
                                 </EditItemTemplate>
                             </asp:TemplateField>
 

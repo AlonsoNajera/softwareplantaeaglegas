@@ -225,7 +225,7 @@ namespace SoftwarePlantas.Compras
         {
             string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
             GridViewRow row = gvRecepciones.Rows[e.RowIndex];
-            string id = gvRecepciones.DataKeys[e.RowIndex].Value.ToString(); // Ahora usa Id en lugar de Folio
+            string id = gvRecepciones.DataKeys[e.RowIndex].Value.ToString();
 
             string fecha = ((TextBox)row.FindControl("txtFecha")).Text;
             string volumenCapturado = ((TextBox)row.FindControl("txtVolumenCapturado")).Text;
@@ -234,14 +234,20 @@ namespace SoftwarePlantas.Compras
             string claveVehiculo = ((TextBox)row.FindControl("txtClaveVehiculo")).Text;
             string transCRE = ((TextBox)row.FindControl("txtTransCRE")).Text;
             string precioCompra = ((TextBox)row.FindControl("txtPrecioCompra")).Text;
+            string rfcProveedor = ((DropDownList)row.FindControl("ddlRFCProveedor")).SelectedValue;
 
             using (SqlConnection con = new SqlConnection(instanciaConnectionString))
             {
                 con.Open();
                 string query = @"UPDATE RecepcionesCap
-                         SET FechaDocumento = @Fecha, VolumenPemex = @VolumenCapturado,
-                             FolioDocumento = @FolioDocumento, UUID = @UUID, ClaveVehiculo = @ClaveVehiculo,
-                             TransCRE = @TransCRE, PrecioCompra = @PrecioCompra
+                         SET FechaDocumento = @Fecha, 
+                             VolumenPemex = @VolumenCapturado,
+                             FolioDocumento = @FolioDocumento, 
+                             UUID = @UUID, 
+                             ClaveVehiculo = @ClaveVehiculo,
+                             TransCRE = @TransCRE, 
+                             PrecioCompra = @PrecioCompra,
+                             RFCProveedor = @RFCProveedor
                          WHERE Id = @Id";
 
                 using (SqlCommand cmd = new SqlCommand(query, con))
@@ -253,7 +259,8 @@ namespace SoftwarePlantas.Compras
                     cmd.Parameters.AddWithValue("@ClaveVehiculo", claveVehiculo);
                     cmd.Parameters.AddWithValue("@TransCRE", transCRE);
                     cmd.Parameters.AddWithValue("@PrecioCompra", precioCompra);
-                    cmd.Parameters.AddWithValue("@Id", id); // Usa Id en lugar de Folio
+                    cmd.Parameters.AddWithValue("@RFCProveedor", rfcProveedor);
+                    cmd.Parameters.AddWithValue("@Id", id);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -277,14 +284,28 @@ namespace SoftwarePlantas.Compras
                 return;
             }
 
-
             DataTable dt = new DataTable();
 
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
-                string query = @" SELECT R.Folio,R.Tanque,R.Producto,R.VolumenRecepcion,RCAP.FechaDocumento,RCAP.VolumenPemex AS VolumenCapturado,RCAP.FolioDocumento,
-                                    RCAP.UUID,RCAP.ClaveVehiculo,RCAP.TransCRE,RCAP.PrecioCompra,RCAP.Id FROM Recepciones R INNER JOIN Recepcionescap RCAP ON R.Folio=RCAP.Folio
-                                    WHERE CAST(RCAP.FechaDocumento AS DATE) BETWEEN @Inicio AND @Fin ";
+                string query = @"
+            SELECT 
+                R.Folio,
+                R.Tanque,
+                R.Producto,
+                R.VolumenRecepcion,
+                RCAP.FechaDocumento,
+                RCAP.VolumenPemex AS VolumenCapturado,
+                RCAP.FolioDocumento,
+                RCAP.UUID,
+                RCAP.ClaveVehiculo,
+                RCAP.TransCRE,
+                RCAP.PrecioCompra,
+                RCAP.RFCProveedor,
+                RCAP.Id 
+            FROM Recepciones R 
+            INNER JOIN Recepcionescap RCAP ON R.Folio = RCAP.Folio
+            WHERE CAST(RCAP.FechaDocumento AS DATE) BETWEEN @Inicio AND @Fin";
 
                 SqlCommand cmd = new SqlCommand(query, conn);
                 cmd.Parameters.AddWithValue("@Inicio", fechaInicio);
@@ -297,6 +318,72 @@ namespace SoftwarePlantas.Compras
             gvRecepciones.DataSource = dt;
             gvRecepciones.DataBind();
             pnlResultados.Visible = true;
+        }
+
+        private DataTable ObtenerProveedores()
+        {
+            string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
+            DataTable dt = new DataTable();
+
+            using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
+            {
+                string query = "SELECT RFC, Nombre FROM ProveedCombust ORDER BY Nombre";
+                SqlCommand cmd = new SqlCommand(query, conn);
+                SqlDataAdapter da = new SqlDataAdapter(cmd);
+                da.Fill(dt);
+            }
+
+            return dt;
+        }
+
+        protected void gvRecepciones_RowDataBound(object sender, GridViewRowEventArgs e)
+        {
+            if (e.Row.RowType == DataControlRowType.DataRow && (e.Row.RowState & DataControlRowState.Edit) == DataControlRowState.Edit)
+            {
+                DropDownList ddlProveedor = (DropDownList)e.Row.FindControl("ddlRFCProveedor");
+                if (ddlProveedor != null)
+                {
+                    DataTable proveedores = ObtenerProveedores();
+                    ddlProveedor.DataSource = proveedores;
+                    ddlProveedor.DataTextField = "Nombre";
+                    ddlProveedor.DataValueField = "RFC";
+                    ddlProveedor.DataBind();
+
+                    // Seleccionar el valor actual
+                    DataRowView rowView = (DataRowView)e.Row.DataItem;
+                    if (rowView != null && rowView["RFCProveedor"] != DBNull.Value)
+                    {
+                        string rfcActual = rowView["RFCProveedor"].ToString();
+                        if (!string.IsNullOrEmpty(rfcActual) && ddlProveedor.Items.FindByValue(rfcActual) != null)
+                        {
+                            ddlProveedor.SelectedValue = rfcActual;
+                        }
+                    }
+                }
+            }
+        }
+
+        protected string ObtenerNombreProveedor(string rfc)
+        {
+            if (string.IsNullOrEmpty(rfc))
+                return "";
+
+            string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
+            string nombre = "";
+
+            using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
+            {
+                string query = "SELECT Nombre FROM ProveedCombust WHERE RFC = @RFC";
+                SqlCommand cmd = new SqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@RFC", rfc);
+                
+                conn.Open();
+                object result = cmd.ExecuteScalar();
+                if (result != null)
+                    nombre = result.ToString();
+            }
+
+            return nombre;
         }
     }
 }
