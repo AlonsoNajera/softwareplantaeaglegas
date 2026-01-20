@@ -383,7 +383,7 @@ namespace SoftwarePlantas
         //string RCliente = regimenFiscalNode != null ? regimenFiscalNode.Value : "";
         //string Cp = codigoPostalNode != null ? codigoPostalNode.Value : "";
 
-        //string calvesat = clavesatNode != null ? clavesatNode.Value : "";
+        //string clavesat = clavesatNode != null ? clavesatNode.Value : "";
         //string descripcion = DescripcionNode != null ? DescripcionNode.Value : "SIN DESCRIPCIÓN";
 
         //string TotalFact = totalNode != null ? totalNode.Value : "0.00";
@@ -429,7 +429,7 @@ namespace SoftwarePlantas
         //                        // Actualizar la base de datos
         //                        ActualizarDespacho(transaccion, uuid, cantidad, TotalFact, valorUnitario, serieFact, folioFact, iepsVenta);
         //                        AgregarFactura(idCliente, rfcCliente, serieFact, uuid, folioFact, nomCliente, Cp, TotalFact, Subtotal, MetodoPago, fechaFact, Impuestos, FormaPago, iepsVenta, cantidad);
-        //                        AgregarDetalleFactura(ObtenerProducto, transaccion, valorUnitario, serieFact, uuid, folioFact, TotalFact, Subtotal, fechaFact, Impuestos, iepsVenta, cantidad, calvesat, descripcion);
+        //                        AgregarDetalleFactura(ObtenerProducto, transaccion, valorUnitario, serieFact, uuid, folioFact, TotalFact, Subtotal, fechaFact, Impuestos, iepsVenta, cantidad, clavesat, descripcion);
 
         //                        // Mostrar SweetAlert desde el servidor
         //                        ScriptManager.RegisterStartupScript(this, GetType(), "alerta",
@@ -606,7 +606,7 @@ namespace SoftwarePlantas
         //        catch (Exception ex)
         //        {
         //            ScriptManager.RegisterStartupScript(this, GetType(), "alerta",
-        //                $"Swal.fire('Error', 'Ocurrió un error al procesar el XML: {ex.Message}', 'error');", true);
+        //                "Swal.fire('Error', 'Ocurrió un error al procesar el XML.', 'error');", true);
         //        }
         //    }
         //    else
@@ -738,7 +738,7 @@ namespace SoftwarePlantas
 
 
 
-        //        string calvesat = ObtenerValorXML(xmlDocProcesado, "//cfdi:Concepto/@ClaveProdServ", ns, "");
+        //        string clavesat = ObtenerValorXML(xmlDocProcesado, "//cfdi:Concepto/@ClaveProdServ", ns, "");
         //        string descripcion = ObtenerValorXML(xmlDocProcesado, "//cfdi:Concepto/@Descripcion", ns, "SIN DESCRIPCIÓN");
 
 
@@ -760,7 +760,7 @@ namespace SoftwarePlantas
 
         //        ActualizarDespacho(transaccion, uuid, cantidad, TotalFact, valorUnitario, serieFact, folioFact, iepsVenta);
         //        AgregarFactura(idCliente, rfcCliente, serieFact, uuid, folioFact, nomCliente, Cp, TotalFact, Subtotal, MetodoPago, fechaFact, Impuestos, FormaPago, iepsVenta, cantidad);
-        //        AgregarDetalleFactura(ObtenerProducto, transaccion, valorUnitario, serieFact, uuid, folioFact, TotalFact, Subtotal,fechaFact, Impuestos, iepsVenta, cantidad, calvesat, descripcion);
+        //        AgregarDetalleFactura(ObtenerProducto, transaccion, valorUnitario, serieFact, uuid, folioFact, TotalFact, Subtotal,fechaFact, Impuestos, iepsVenta, cantidad, clavesat, descripcion);
 
         //        //// 📌 Mensaje de éxito
         //        //ScriptManager.RegisterStartupScript(this, GetType(), "alerta",
@@ -906,7 +906,7 @@ namespace SoftwarePlantas
                     //ActualizarUUID(transaccion, uuid);
 
                     // 📌 Insertar datos en la base de datos
-                    ActualizarDespacho(transaccion, uuid, cantidad, totalFact, valorUnitario, serieFact, folioFact, iepsVenta);
+                            ActualizarDespacho(transaccion, uuid, cantidad, totalFact, valorUnitario, serieFact, folioFact, iepsVenta);
                     AgregarFactura(idCliente, rfcCliente, serieFact, uuid, folioFact, nomCliente, cpCliente, totalFact, subtotal, metodoPago, fechaFact, impuestos, formaPago, iepsVenta, cantidad);
                     AgregarDetalleFactura(idProducto, transaccion, valorUnitario, serieFact, uuid, folioFact, totalFact, subtotal, fechaFact, impuestos, iepsVenta, cantidad, claveSAT, descripcion);
 
@@ -1059,6 +1059,22 @@ namespace SoftwarePlantas
 
                 string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
 
+                // ✅ Validar que existe una cadena de conexión
+                if (string.IsNullOrEmpty(instanciaConnectionString))
+                {
+                    ScriptManager.RegisterStartupScript(this, GetType(), "alerta",
+                        "Swal.fire('Error', 'No se ha seleccionado una instancia de base de datos.', 'error');", true);
+                    return;
+                }
+
+                // ✅ Validar la conexión antes de proceder
+                if (!VerificarConexionBaseDatos(instanciaConnectionString))
+                {
+                    ScriptManager.RegisterStartupScript(this, GetType(), "alerta",
+                        "Swal.fire('Error', 'No se pudo establecer conexión con la base de datos.', 'error');", true);
+                    return;
+                }
+
                 using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
                 {
                     string query = "INSERT INTO XMLFacturas (Transaccion, XMLContent) VALUES (@Transaccion, @XMLContent)";
@@ -1070,7 +1086,6 @@ namespace SoftwarePlantas
                         // ⚠️ Guardar el XML en un campo de tipo XML en SQL Server
                         cmd.Parameters.Add("@XMLContent", SqlDbType.NVarChar, -1).Value = xmlContent;
 
-
                         conn.Open();
                         cmd.ExecuteNonQuery();
                     }
@@ -1079,7 +1094,12 @@ namespace SoftwarePlantas
             catch (XmlException ex)
             {
                 ScriptManager.RegisterStartupScript(this, GetType(), "alerta",
-                    $"Swal.fire('Error', 'El XML no es valido: {ex.Message}', 'error');", true);
+                    $"Swal.fire('Error', 'El XML no es válido: {ex.Message}', 'error');", true);
+            }
+            catch (SqlException sqlEx)
+            {
+                ScriptManager.RegisterStartupScript(this, GetType(), "alerta",
+                    $"Swal.fire('Error', 'Error de base de datos: {sqlEx.Message}', 'error');", true);
             }
             catch (Exception ex)
             {
@@ -1402,7 +1422,7 @@ namespace SoftwarePlantas
                 {
                     cmdExiste.Parameters.AddWithValue("@RFC", rfcCliente);
 
-                    object resultado = cmdExiste.ExecuteScalar();
+                    object resultado = cmdExiste.ExecuteScalar(); // Ejecutar la consulta y obtener el resultado
 
                     if (resultado != null)
                     {

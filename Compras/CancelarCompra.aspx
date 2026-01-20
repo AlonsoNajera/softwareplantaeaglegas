@@ -23,74 +23,90 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- ✅ DEFINIR FUNCIONES GLOBALES AQUÍ -->
-    <script type="text/javascript">
-        // Definir las funciones globalmente ANTES de que se usen
-        window.abrirModalEditar = function (data) {
-            console.log('Abriendo modal con datos:', data);
+   <script type="text/javascript">
+       window.abrirModalEditar = function (data) {
+           console.log('Abriendo modal con datos:', data);
 
-            document.getElementById('mFechaDocumento').value = data.fechaDocumento || '';
-            document.getElementById('mVolumenCapturado').value = data.volumenCapturado || '';
-            document.getElementById('mFolioDocumento').value = data.folioDocumento || '';
-            document.getElementById('mUUID').value = data.uuid || '';
-            document.getElementById('mClaveVehiculo').value = data.claveVehiculo || '';
-            document.getElementById('mTransCRE').value = data.transCRE || '';
-            document.getElementById('mPrecioCompra').value = data.precioCompra || '';
+           try {
+               document.getElementById('mFechaDocumento').value = data.fechaDocumento || '';
+               document.getElementById('mVolumenCapturado').value = data.volumenCapturado || '';
+               document.getElementById('mFolioDocumento').value = data.folioDocumento || '';
+               document.getElementById('mUUID').value = data.uuid || '';
+               document.getElementById('mClaveVehiculo').value = data.claveVehiculo || '';
+               document.getElementById('mTransCRE').value = data.transCRE || '';
+               document.getElementById('mPrecioCompra').value = data.precioCompra || '';
+               document.getElementById('<%= hfIdProveedor.ClientID %>').value = data.idProveedor || '';
 
+            // Establecer el proveedor seleccionado en el dropdown
             var ddl = document.getElementById('<%= ddlProveedorModal.ClientID %>');
-            if (ddl && data.rfcProveedor) {
-                ddl.value = data.rfcProveedor;
-            }
+               if (ddl && data.idProveedor) {
+                   ddl.value = data.idProveedor;
+                   console.log('Proveedor seleccionado:', data.idProveedor);
+               }
 
-            var modalElement = document.getElementById('modalEditarRecepcion');
-            var modal = new bootstrap.Modal(modalElement);
-            modal.show();
-        };
+               var modalElement = document.getElementById('modalEditarRecepcion');
+               if (!modalElement) {
+                   console.error('No se encontró el elemento del modal');
+                   return;
+               }
 
-        window.guardarModal = function () {
-            document.getElementById('<%= hfFechaDocumento.ClientID %>').value = document.getElementById('mFechaDocumento').value;
-            document.getElementById('<%= hfVolumenCapturado.ClientID %>').value = document.getElementById('mVolumenCapturado').value;
-            document.getElementById('<%= hfFolioDocumento.ClientID %>').value = document.getElementById('mFolioDocumento').value;
-            document.getElementById('<%= hfUUID.ClientID %>').value = document.getElementById('mUUID').value;
-            document.getElementById('<%= hfClaveVehiculo.ClientID %>').value = document.getElementById('mClaveVehiculo').value;
-            document.getElementById('<%= hfTransCRE.ClientID %>').value = document.getElementById('mTransCRE').value;
-            document.getElementById('<%= hfPrecioCompra.ClientID %>').value = document.getElementById('mPrecioCompra').value;
+               var modal = new bootstrap.Modal(modalElement);
+               modal.show();
+               console.log('Modal abierto correctamente');
+           } catch (error) {
+               console.error('Error al abrir modal:', error);
+           }
+       };
 
-            var ddl = document.getElementById('<%= ddlProveedorModal.ClientID %>');
-            document.getElementById('<%= hfRFCProveedor.ClientID %>').value = ddl ? ddl.value : '';
+       window.guardarModal = function () {
+           // Guardar valores de los campos en los HiddenFields
+           document.getElementById('<%= hfFechaDocumento.ClientID %>').value = document.getElementById('mFechaDocumento').value;
+        document.getElementById('<%= hfVolumenCapturado.ClientID %>').value = document.getElementById('mVolumenCapturado').value;
+        document.getElementById('<%= hfFolioDocumento.ClientID %>').value = document.getElementById('mFolioDocumento').value;
+        document.getElementById('<%= hfUUID.ClientID %>').value = document.getElementById('mUUID').value;
+        document.getElementById('<%= hfClaveVehiculo.ClientID %>').value = document.getElementById('mClaveVehiculo').value;
+        document.getElementById('<%= hfTransCRE.ClientID %>').value = document.getElementById('mTransCRE').value;
+        document.getElementById('<%= hfPrecioCompra.ClientID %>').value = document.getElementById('mPrecioCompra').value;
 
-            // Cerrar modal
-            var modalElement = document.getElementById('modalEditarRecepcion');
-            var modal = bootstrap.Modal.getInstance(modalElement);
-            if (modal) modal.hide();
+        // Guardar el IdProveedor seleccionado del dropdown
+        var ddl = document.getElementById('<%= ddlProveedorModal.ClientID %>');
+        document.getElementById('<%= hfIdProveedor.ClientID %>').value = ddl ? ddl.value : '';
 
-            // Disparar postback
-            document.getElementById('<%= btnGuardarModal.ClientID %>').click();
-        };
+        console.log('IdProveedor a guardar:', ddl ? ddl.value : 'vacío');
 
-        function confirmarEliminar(folio) {
-            Swal.fire({
-                title: "¿Estás seguro?",
-                text: "Esta acción eliminará la Recepcion " + folio + " de forma permanente.",
-                icon: "warning",
-                showCancelButton: true,
-                confirmButtonColor: "#d33",
-                cancelButtonColor: "#3085d6",
-                confirmButtonText: "Sí, eliminar",
-                cancelButtonText: "Cancelar"
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    __doPostBack('btnEliminar', folio);
-                }
-            });
-        }
+        // Cerrar modal
+        var modalElement = document.getElementById('modalEditarRecepcion');
+        var modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) modal.hide();
 
-        function toggleMenu() {
-            var sidebar = document.getElementById("sidebarMenu");
-            if (sidebar) {
-                sidebar.classList.toggle("show");
-            }
-        }
-    </script>
+        // Disparar postback para guardar en el servidor
+        document.getElementById('<%= btnGuardarModal.ClientID %>').click();
+       };
+
+       function confirmarEliminar(folio) {
+           Swal.fire({
+               title: "¿Estás seguro?",
+               text: "Esta acción eliminará la Recepcion " + folio + " de forma permanente.",
+               icon: "warning",
+               showCancelButton: true,
+               confirmButtonColor: "#d33",
+               cancelButtonColor: "#3085d6",
+               confirmButtonText: "Sí, eliminar",
+               cancelButtonText: "Cancelar"
+           }).then((result) => {
+               if (result.isConfirmed) {
+                   __doPostBack('btnEliminar', folio);
+               }
+           });
+       }
+
+       function toggleMenu() {
+           var sidebar = document.getElementById("sidebarMenu");
+           if (sidebar) {
+               sidebar.classList.toggle("show");
+           }
+       }
+</script>
 </head>
 
 
@@ -156,6 +172,7 @@
                             OnRowCommand="gvRecepciones_RowCommand">
 
                             <Columns>
+
                                 <asp:TemplateField HeaderText="Id">
                                     <ItemTemplate><%# Eval("Id") %></ItemTemplate>
                                 </asp:TemplateField>
@@ -204,11 +221,11 @@
                                     <ItemTemplate><%# Eval("PrecioCompra") %></ItemTemplate>
                                 </asp:TemplateField>
 
-                                <asp:TemplateField HeaderText="Proveedor">
-                                    <ItemTemplate>
-                                        <%# ObtenerNombreProveedor(Eval("RFCProveedor").ToString()) %>
-                                    </ItemTemplate>
-                                </asp:TemplateField>
+                            <asp:TemplateField HeaderText="Proveedor">
+    <ItemTemplate>
+        <%# ObtenerNombreProveedorPorId(Eval("IdProveedor")) %>
+    </ItemTemplate>
+</asp:TemplateField>
 
                                 <asp:TemplateField HeaderText="Acciones">
                                     <ItemStyle Width="180px" />
@@ -263,7 +280,7 @@
 
                             <div class="modal-body">
                                 <div class="row g-3">
-
+                                    <asp:HiddenField ID="hfIdProveedor" runat="server" />
                                     <div class="col-md-4">
                                         <label class="form-label">Fecha documento</label>
                                         <input type="date" id="mFechaDocumento" class="form-control" />

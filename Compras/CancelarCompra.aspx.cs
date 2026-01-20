@@ -168,7 +168,8 @@ namespace SoftwarePlantas.Compras
                         RCAP.TransCRE,
                         RCAP.PrecioCompra,
                         TRIM(RCAP.RFCProveedor) AS RFCProveedor,
-                        RCAP.Id
+                        RCAP.Id,
+                        RCAP.IdProveedor
                     FROM Recepciones R 
                     INNER JOIN Recepcionescap RCAP ON R.Folio = RCAP.Folio
                     WHERE CAST(RCAP.FechaDocumento AS DATE) BETWEEN @Inicio AND @Fin";
@@ -269,7 +270,7 @@ namespace SoftwarePlantas.Compras
 
             ddlProveedorModal.DataSource = proveedores;
             ddlProveedorModal.DataTextField = "Nombre";
-            ddlProveedorModal.DataValueField = "RFC";
+            ddlProveedorModal.DataValueField = "IdProveedor"; // Cambiado de RFC a IdProveedor
             ddlProveedorModal.DataBind();
 
             ddlProveedorModal.Items.Insert(0, new ListItem("Seleccione...", ""));
@@ -282,7 +283,7 @@ namespace SoftwarePlantas.Compras
 
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
-                string query = "SELECT TRIM(RFC) AS RFC, Nombre FROM ProveedCombust ORDER BY Nombre";
+                string query = "SELECT TRIM(RFC) AS RFC, Nombre,IdProveedor FROM ProveedCombust ORDER BY Nombre";
                 SqlCommand cmd = new SqlCommand(query, conn);
                 SqlDataAdapter da = new SqlDataAdapter(cmd);
                 da.Fill(dt);
@@ -317,7 +318,8 @@ namespace SoftwarePlantas.Compras
                                 RCAP.ClaveVehiculo,
                                 RCAP.TransCRE,
                                 RCAP.PrecioCompra,
-                                RTRIM(RCAP.RFCProveedor) AS RFCProveedor
+                                RTRIM(RCAP.RFCProveedor) AS RFCProveedor,
+                                RCAP.IdProveedor
                             FROM Recepcionescap RCAP
                             WHERE RCAP.Id = @Id";
 
@@ -338,12 +340,16 @@ namespace SoftwarePlantas.Compras
                         // Cargar proveedores
                         ddlProveedorModal.DataSource = ObtenerProveedores();
                         ddlProveedorModal.DataTextField = "Nombre";
-                        ddlProveedorModal.DataValueField = "RFC";
+                        ddlProveedorModal.DataValueField = "IdProveedor"; // Cambiado
                         ddlProveedorModal.DataBind();
                         
                         // Formatear fecha
                         string fechaDoc = row["FechaDocumento"] != DBNull.Value 
                             ? Convert.ToDateTime(row["FechaDocumento"]).ToString("yyyy-MM-dd") 
+                            : "";
+                        
+                        string idProveedor = row["IdProveedor"] != DBNull.Value 
+                            ? row["IdProveedor"].ToString() 
                             : "";
                         
                         // Escapar valores para JavaScript
@@ -357,7 +363,8 @@ namespace SoftwarePlantas.Compras
                                     claveVehiculo: '{4}',
                                     transCRE: '{5}',
                                     precioCompra: '{6}',
-                                    rfcProveedor: '{7}'
+                                    rfcProveedor: '{7}',
+                                    idProveedor: '{8}'
                                 }});
                             }}, 100);
                         ", 
@@ -368,7 +375,8 @@ namespace SoftwarePlantas.Compras
                             row["ClaveVehiculo"].ToString().Replace("'", "\\'"),
                             row["TransCRE"].ToString().Replace("'", "\\'"),
                             row["PrecioCompra"].ToString().Replace("'", "\\'"),
-                            row["RFCProveedor"].ToString().Replace("'", "\\'")
+                            row["RFCProveedor"].ToString().Replace("'", "\\'"),
+                            idProveedor
                         );
                         
                         ScriptManager.RegisterStartupScript(this, GetType(), "openModal_" + id, script, true);
@@ -447,15 +455,39 @@ namespace SoftwarePlantas.Compras
                 }
             }
 
-            // Resto
+            // Resto de campos
             string volumenCapturado = hfVolumenCapturado.Value;
             string folioDoc = hfFolioDocumento.Value;
             string uuid = hfUUID.Value;
             string claveVehiculo = hfClaveVehiculo.Value;
             string transCRE = hfTransCRE.Value;
             string precioCompra = hfPrecioCompra.Value;
-            string rfcProveedor = (hfRFCProveedor.Value ?? "").Trim().ToUpperInvariant();
+            
+            // Obtener IdProveedor y RFC del proveedor seleccionado
+            int? idProveedor = null;
+            string rfcProveedor = "";
+            
+            if (!string.IsNullOrWhiteSpace(hfIdProveedor.Value) && int.TryParse(hfIdProveedor.Value, out int idProv))
+            {
+                idProveedor = idProv;
+                
+                // Consultar el RFC correspondiente al IdProveedor seleccionado
+                using (SqlConnection connRFC = new SqlConnection(instanciaConnectionString))
+                {
+                    string queryRFC = "SELECT TRIM(RFC) FROM ProveedCombust WHERE IdProveedor = @IdProveedor";
+                    SqlCommand cmdRFC = new SqlCommand(queryRFC, connRFC);
+                    cmdRFC.Parameters.AddWithValue("@IdProveedor", idProveedor.Value);
+                    
+                    connRFC.Open();
+                    object resultRFC = cmdRFC.ExecuteScalar();
+                    if (resultRFC != null)
+                    {
+                        rfcProveedor = resultRFC.ToString().Trim().ToUpperInvariant();
+                    }
+                }
+            }
 
+            // Actualizar en la base de datos
             using (SqlConnection con = new SqlConnection(instanciaConnectionString))
             {
                 con.Open();
@@ -469,7 +501,8 @@ namespace SoftwarePlantas.Compras
                         ClaveVehiculo = @ClaveVehiculo,
                         TransCRE = @TransCRE,
                         PrecioCompra = @PrecioCompra,
-                        RFCProveedor = @RFCProveedor
+                        RFCProveedor = @RFCProveedor,
+                        IdProveedor = @IdProveedor
                     WHERE Id = @Id";
 
                 using (SqlCommand cmd = new SqlCommand(query, con))
@@ -486,10 +519,25 @@ namespace SoftwarePlantas.Compras
                     cmd.Parameters.AddWithValue("@ClaveVehiculo", claveVehiculo);
                     cmd.Parameters.AddWithValue("@TransCRE", transCRE);
                     cmd.Parameters.AddWithValue("@PrecioCompra", precioCompra);
-                    cmd.Parameters.AddWithValue("@RFCProveedor", rfcProveedor);
+                    
+                    // RFC e IdProveedor obtenidos dinámicamente
+                    cmd.Parameters.AddWithValue("@RFCProveedor", string.IsNullOrEmpty(rfcProveedor) ? (object)DBNull.Value : rfcProveedor);
+                    
+                    if (idProveedor.HasValue)
+                        cmd.Parameters.AddWithValue("@IdProveedor", idProveedor.Value);
+                    else
+                        cmd.Parameters.AddWithValue("@IdProveedor", DBNull.Value);
+        
                     cmd.Parameters.AddWithValue("@Id", id);
 
-                    cmd.ExecuteNonQuery();
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    
+                    if (rowsAffected == 0)
+                    {
+                        ScriptManager.RegisterStartupScript(this, GetType(), "warning",
+                            "Swal.fire('Advertencia', 'No se actualizó ningún registro.', 'warning');", true);
+                        return;
+                    }
                 }
             }
 
@@ -531,6 +579,42 @@ namespace SoftwarePlantas.Compras
                 object result = cmd.ExecuteScalar();
                 if (result != null)
                     nombre = result.ToString();
+            }
+
+            return nombre;
+        }
+
+        protected string ObtenerNombreProveedorPorId(object idProveedorObj)
+        {
+            if (idProveedorObj == null || idProveedorObj == DBNull.Value)
+                return "";
+
+            if (!int.TryParse(idProveedorObj.ToString(), out int idProveedor))
+                return "";
+
+            string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
+            if (string.IsNullOrEmpty(instanciaConnectionString))
+                return "";
+
+            string nombre = "";
+
+            try
+            {
+                using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
+                {
+                    string query = "SELECT Nombre FROM ProveedCombust WHERE IdProveedor = @IdProveedor";
+                    SqlCommand cmd = new SqlCommand(query, conn);
+                    cmd.Parameters.AddWithValue("@IdProveedor", idProveedor);
+
+                    conn.Open();
+                    object result = cmd.ExecuteScalar();
+                    if (result != null)
+                        nombre = result.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error al obtener nombre del proveedor: {ex.Message}");
             }
 
             return nombre;

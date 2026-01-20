@@ -541,7 +541,7 @@ namespace SoftwarePlantas
                                           Rcap.FechaDocumento AS Fecha, Rcap.PrecioCompra AS Precio, Rcap.VolumenPemex AS Volumen 
                                           FROM Recepciones R 
                                           INNER JOIN Recepcionescap Rcap ON R.Folio = Rcap.Folio 
-                                          INNER JOIN ProveedCombust PC ON Rcap.RFCProveedor = PC.RFC 
+                                          INNER JOIN ProveedCombust PC ON Rcap.IdProveedor = PC.IdProveedor 
                                           WHERE CAST(Rcap.FechaDocumento AS DATE) BETWEEN @inicio AND @fin and r.ClaveProducto=@cveproducto
 										  GROUP BY RTRIM(Rcap.RFCProveedor), RTRIM(PC.Nombre), PC.PermisoCRE, Rcap.UUID,Rcap.FechaDocumento, Rcap.PrecioCompra, Rcap.VolumenPemex", conn);
                 cmd.Parameters.AddWithValue("@inicio", inicio);
@@ -864,7 +864,7 @@ namespace SoftwarePlantas
     Rcap.VolumenPemex AS Volumen,
     Rcap.PrecioCompra
 FROM dbo.Recepcionescap Rcap
-LEFT JOIN dbo.ProveedCombust PC ON Rcap.RFCProveedor = PC.RFC
+LEFT JOIN dbo.ProveedCombust PC ON Rcap.IdProveedor = PC.IdProveedor
 WHERE CAST(Rcap.FechaDocumento AS date)  BETWEEN @inicio AND @fin
 ORDER BY Rcap.ClaveProducto,Rcap.FechaDocumento, Rcap.Folio;";
 
