@@ -1,5 +1,4 @@
-﻿
-using iTextSharp.text;
+﻿using iTextSharp.text;
 using iTextSharp.text.pdf;
 using Microsoft.Ajax.Utilities;
 using Newtonsoft.Json;
@@ -195,8 +194,24 @@ namespace SoftwarePlantas
             public int NumeroDuctosTransporteDistribucion { get; set; }
             public int NumeroDispensarios { get; set; }
             public DateTime FechaYHoraReporteMes { get; set; }
+            
+            // ✅ Omitir Geolocalizacion si es null
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
             public List<Geolocalizacion> Geolocalizacion { get; set; }
+            
             public List<Producto> Producto { get; set; }
+            
+            // ✅ Nueva propiedad para BitacoraMensual
+            public List<EventoBitacora> BitacoraMensual { get; set; }
+        }
+
+        // ✅ Nueva clase para los eventos de la bitácora
+        public class EventoBitacora
+        {
+            public int NumeroRegistro { get; set; }
+            public DateTime FechaYHoraEvento { get; set; }
+            public int TipoEvento { get; set; }
+            public string DescripcionEvento { get; set; }
         }
 
         public class Geolocalizacion
@@ -209,9 +224,37 @@ namespace SoftwarePlantas
         {
             public string ClaveProducto { get; set; }
             public string ClaveSubProducto { get; set; }
-            public double ComposOctanajeGasolina { get; set; }
+            
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public int? ComposOctanajeGasolina { get; set; }
+            
+            // ✅ Para gasolinas (SP16, SP17)
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
             public string GasolinaConCombustibleNoFosil { get; set; }
+            
+            // ✅ Para diesel (SP18)
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public string DieselConCombustibleNoFosil { get; set; }
+            
             public ReporteDeVolumenMensual ReporteDeVolumenMensual { get; set; }
+
+            // ✅ SOLO SP16 y SP17 deben mostrar ComposOctanajeGasolina
+            public bool ShouldSerializeComposOctanajeGasolina()
+            {
+                return ClaveSubProducto == "SP16" || ClaveSubProducto == "SP17";
+            }
+            
+            // ✅ Solo SP16 y SP17 deben mostrar GasolinaConCombustibleNoFosil
+            public bool ShouldSerializeGasolinaConCombustibleNoFosil()
+            {
+                return ClaveSubProducto == "SP16" || ClaveSubProducto == "SP17";
+            }
+            
+            // ✅ Solo SP18 debe mostrar DieselConCombustibleNoFosil
+            public bool ShouldSerializeDieselConCombustibleNoFosil()
+            {
+                return ClaveSubProducto == "SP18";
+            }
         }
 
         public class ReporteDeVolumenMensual
@@ -253,7 +296,7 @@ namespace SoftwarePlantas
 
         public class Complemento
         {
-            public string TipoComplemento { get; set; } = "Comercializacion";
+            public string TipoComplemento { get; set; } = "Distribucion";
             public List<Nacional> Nacional { get; set; }
         }
 
@@ -269,7 +312,15 @@ namespace SoftwarePlantas
         {
             public string Cfdi { get; set; }
             public string TipoCfdi { get; set; } = "Ingreso";
-            public double PrecioVentaOCompraOContrap { get; set; }
+            
+            // ✅ Nullable para omitir cuando no aplica
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public double? PrecioCompra { get; set; }
+
+            // ✅ Nullable para omitir cuando no aplica
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public double? PrecioVenta { get; set; }
+            
             public DateTime FechaYHoraTransaccion { get; set; }
             public VolumenDocumentado VolumenDocumentado { get; set; }
         }
@@ -292,9 +343,8 @@ namespace SoftwarePlantas
             DateTime fechaInicio = new DateTime(anio, mes, 1);
             DateTime fechaFin = fechaInicio.AddMonths(1).AddDays(-1);
 
-            // Reemplaza con tu cadena de conexión real según instancia seleccionada
             string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
-            // 1. Obtener encabezado desde empresasf
+
             var reporte = ObtenerEncabezadoDesdeEmpresa(instanciaConnectionString, fechaFin);
             if (reporte == null)
             {
@@ -302,61 +352,46 @@ namespace SoftwarePlantas
                 return;
             }
 
-            // 2. Obtener productos y datos relacionados
             reporte.Producto = ObtenerProductosDesdeBD(fechaInicio, fechaFin, instanciaConnectionString);
 
-            //// 3. Serializar el objeto a JSON
-            //string json = JsonConvert.SerializeObject(reporte, Formatting.Indented);
+            // ✅ Configurar serialización con formato ISO 8601 y zona horaria
+            var settings = new JsonSerializerSettings
+            {
+                DateFormatHandling = DateFormatHandling.IsoDateFormat,
+                DateTimeZoneHandling = DateTimeZoneHandling.Local,
+                Formatting = Formatting.Indented
+            };
 
-            //// 4. Generar nombre de archivo tipo SAT
-            //string uuid = Guid.NewGuid().ToString().ToUpper();
-            //string rfcContribuyente = reporte.RfcContribuyente;
-            //string rfcProveedor = reporte.RfcProveedor;
-            //string fechaSAT = fechaFin.ToString("yyyy-MM-dd");
-            //string ClaveInstalacion = reporte.ClaveInstalacion;
-            //string fileName = $"M_{uuid}_{rfcContribuyente}_{rfcProveedor}_{fechaSAT}_{ClaveInstalacion}_CMN_JSON.json";
-
-            //// 5. Forzar descarga del archivo JSON
-            //Response.Clear();
-            //Response.ContentType = "application/json";
-            //Response.AddHeader("Content-Disposition", $"attachment; filename={fileName}");
-            //Response.Write(json);
-            //Response.End();
-
-            string json = JsonConvert.SerializeObject(reporte, Formatting.Indented);
+            string json = JsonConvert.SerializeObject(reporte, settings);
 
             string uuid = Guid.NewGuid().ToString().ToUpper();
             string rfcContribuyente = reporte.RfcContribuyente;
             string rfcProveedor = reporte.RfcProveedor;
             string fechaSAT = fechaFin.ToString("yyyy-MM-dd");
             string ClaveInstalacion = reporte.ClaveInstalacion;
-            string nombreBase = $"M_{uuid}_{rfcContribuyente}_{rfcProveedor}_{fechaSAT}_{ClaveInstalacion}_CMN_JSON";
+            string nombreBase = $"M_{uuid}_{rfcContribuyente}_{rfcProveedor}_{fechaSAT}_{ClaveInstalacion}_DIS_JSON";
             string nombreJson = nombreBase + ".json";
             string nombreZip = nombreBase + ".zip";
-            string nombrePdf = nombreBase + ".pdf";
+
             string carpetaTemp = Server.MapPath("~/tempzip/");
             if (!Directory.Exists(carpetaTemp)) Directory.CreateDirectory(carpetaTemp);
 
             string rutaJson = Path.Combine(carpetaTemp, nombreJson);
             File.WriteAllText(rutaJson, json);
 
-            //string rutaPdf = Path.Combine(carpetaTemp, nombrePdf);
-            //GenerarPDFDesdeJson(json, rutaPdf);
-
             string rutaZip = Path.Combine(carpetaTemp, nombreZip);
             if (File.Exists(rutaZip)) File.Delete(rutaZip);
+
             using (var zip = ZipFile.Open(rutaZip, ZipArchiveMode.Create))
             {
                 zip.CreateEntryFromFile(rutaJson, nombreJson);
             }
-
 
             Response.Clear();
             Response.ContentType = "application/zip";
             Response.AddHeader("Content-Disposition", $"attachment; filename={nombreZip}");
             Response.TransmitFile(rutaZip);
             Response.End();
-
         }
 
 
@@ -373,13 +408,11 @@ namespace SoftwarePlantas
                 RFCProvCtlVol AS RfcProveedor,
                 PermisoCRE AS Permiso,
                 CveInstalacion AS ClaveInstalacion,
-                'comercialización de petrolíferos' AS DescripcionInstalacion,
+                'Distribucion de petrolíferos' AS DescripcionInstalacion,
                 0 AS NumeroPozos,
                 0 AS NumeroDuctosEntradaSalida,
                 0 AS NumeroDuctosTransporteDistribucion,
-                0 AS NumeroDispensarios,
-                0 AS GeoLatitud,
-                0 AS GeoLongitud
+                0 AS NumeroDispensarios
             FROM empresasf", conn);
 
                 string rfcContribuyente = "";
@@ -391,8 +424,6 @@ namespace SoftwarePlantas
                 int ductoEntrada = 0;
                 int ductoDistribucion = 0;
                 int dispensarios = 0;
-                double geoLat = 0;
-                double geoLong = 0;
 
                 using (SqlDataReader dr = cmd.ExecuteReader())
                 {
@@ -407,16 +438,13 @@ namespace SoftwarePlantas
                         ductoEntrada = Convert.ToInt32(dr["NumeroDuctosEntradaSalida"]);
                         ductoDistribucion = Convert.ToInt32(dr["NumeroDuctosTransporteDistribucion"]);
                         dispensarios = Convert.ToInt32(dr["NumeroDispensarios"]);
-                        geoLat = Convert.ToDouble(dr["GeoLatitud"]);
-                        geoLong = Convert.ToDouble(dr["GeoLongitud"]);
                     }
                     else
                     {
                         return null;
                     }
-                } // 🔒 Aquí se cierra el SqlDataReader antes de continuar
+                }
 
-                // Ahora sí podemos ejecutar otra consulta
                 int numeroTanques = 0;
                 using (SqlCommand cmdTanques = new SqlCommand("SELECT COUNT(*) FROM tanques", conn))
                 {
@@ -431,7 +459,7 @@ namespace SoftwarePlantas
                     RfcProveedor = rfcProveedor,
                     RfcProveedores = new List<string> { rfcProveedor },
                     Caracter = "permisionario",
-                    ModalidadPermiso = "PER1",
+                    ModalidadPermiso = "PER5",
                     NumPermiso = permiso,
                     ClaveInstalacion = claveInstalacion,
                     DescripcionInstalacion = descripcionInstalacion,
@@ -441,15 +469,19 @@ namespace SoftwarePlantas
                     NumeroDuctosTransporteDistribucion = ductoDistribucion,
                     NumeroDispensarios = dispensarios,
                     FechaYHoraReporteMes = fechaFin,
-                    Geolocalizacion = new List<Geolocalizacion>
-            {
-                new Geolocalizacion
-                {
-                    GeolocalizacionLatitud = geoLat,
-                    GeolocalizacionLongitud = geoLong
-                }
-            },
-                    Producto = new List<Producto>()
+                    Geolocalizacion = null,
+                    Producto = new List<Producto>(),
+                    // ✅ Agregar BitacoraMensual con el evento fijo
+                    BitacoraMensual = new List<EventoBitacora>
+                    {
+                        new EventoBitacora
+                        {
+                            NumeroRegistro = 1,
+                            FechaYHoraEvento = fechaFin,
+                            TipoEvento = 5,
+                            DescripcionEvento = "Archivo JSON Mensual (Distribuidora)."
+                        }
+                    }
                 };
             }
         }
@@ -471,13 +503,30 @@ namespace SoftwarePlantas
                     while (dr.Read())
                     {
                         string claveProducto = dr["NProdClave"].ToString();
+                        string claveSubProducto = dr["ClaveSubProducto"].ToString();
+                        int octanos = dr["Octanos"] != DBNull.Value ? Convert.ToInt32(dr["Octanos"]) : 0;
+                        string combustibleNoFosil = dr["CombustibleNoFosil"].ToString();
 
                         Producto p = new Producto
                         {
                             ClaveProducto = dr["ClaveProducto"].ToString(),
-                            ClaveSubProducto = dr["ClaveSubProducto"].ToString(),
-                            ComposOctanajeGasolina = Convert.ToDouble(dr["Octanos"]),
-                            GasolinaConCombustibleNoFosil = dr["CombustibleNoFosil"].ToString(),
+                            ClaveSubProducto = claveSubProducto,
+
+                            // ✅ Solo asignar octanaje para SP16 y SP17 (NO para SP18)
+                            ComposOctanajeGasolina = (claveSubProducto == "SP16" || claveSubProducto == "SP17")
+                                ? (int?)octanos
+                                : null,
+
+                            // ✅ Para SP16 y SP17: usar GasolinaConCombustibleNoFosil
+                            GasolinaConCombustibleNoFosil = (claveSubProducto == "SP16" || claveSubProducto == "SP17")
+                                ? combustibleNoFosil
+                                : null,
+
+                            // ✅ Para SP18: usar DieselConCombustibleNoFosil
+                            DieselConCombustibleNoFosil = (claveSubProducto == "SP18")
+                                ? combustibleNoFosil
+                                : null,
+
                             ReporteDeVolumenMensual = new ReporteDeVolumenMensual
                             {
                                 ControlDeExistencias = ObtenerExistencias(inicio, instanciaConnectionString, claveProducto),
@@ -493,7 +542,6 @@ namespace SoftwarePlantas
 
             return productos;
         }
-
         // -----------------------------
         // Método nuevo: ObtenerExistencias desde la tabla existenciasvol
         // -----------------------------
@@ -505,7 +553,7 @@ namespace SoftwarePlantas
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
                 conn.Open();
-                SqlCommand cmd = new SqlCommand("SELECT TOP 1 SUM(VolumenDisponible) AS VolumenDisponible, CAST(FechaMedicionActual AS DATE) AS FechaMedicionActual FROM existenciasvol WHERE MONTH(FechaMedicionActual) = @mes AND YEAR(FechaMedicionActual) = @anio AND ClaveProducto=@cveproducto GROUP BY CAST(FechaMedicionActual AS DATE) ORDER BY FechaMedicionActual DESC", conn);
+                SqlCommand cmd = new SqlCommand("SELECT TOP 1 CAST(SUM(VolumenDisponible) AS DECIMAL(20,2)) AS VolumenDisponible, CAST(FechaMedicionActual AS DATE) AS FechaMedicionActual FROM existenciasvol WHERE MONTH(FechaMedicionActual) = @mes AND YEAR(FechaMedicionActual) = @anio AND ClaveProducto=@cveproducto GROUP BY CAST(FechaMedicionActual AS DATE) ORDER BY FechaMedicionActual DESC", conn);
                 cmd.Parameters.AddWithValue("@mes", fecha.Month);
                 cmd.Parameters.AddWithValue("@anio", fecha.Year);
                 cmd.Parameters.AddWithValue("@cveproducto", claveProducto);
@@ -537,13 +585,13 @@ namespace SoftwarePlantas
             {
                 conn.Open();
                 SqlCommand cmd = new SqlCommand(@"
-                                          SELECT max(Rcap.Folio) AS Folio, RTRIM(Rcap.RFCProveedor) RFCProveedor, RTRIM(PC.Nombre) AS NombreProveedor, PC.PermisoCRE AS PermisoProveedor, Rcap.UUID AS Cfdi, 
-                                          Rcap.FechaDocumento AS Fecha, Rcap.PrecioCompra AS Precio, Rcap.VolumenPemex AS Volumen 
-                                          FROM Recepciones R 
-                                          INNER JOIN Recepcionescap Rcap ON R.Folio = Rcap.Folio 
-                                          INNER JOIN ProveedCombust PC ON Rcap.IdProveedor = PC.IdProveedor 
-                                          WHERE CAST(Rcap.FechaDocumento AS DATE) BETWEEN @inicio AND @fin and r.ClaveProducto=@cveproducto
-										  GROUP BY RTRIM(Rcap.RFCProveedor), RTRIM(PC.Nombre), PC.PermisoCRE, Rcap.UUID,Rcap.FechaDocumento, Rcap.PrecioCompra, Rcap.VolumenPemex", conn);
+                              SELECT max(Rcap.Folio) AS Folio, RTRIM(Rcap.RFCProveedor) RFCProveedor, RTRIM(PC.Nombre) AS NombreProveedor, PC.PermisoCRE AS PermisoProveedor, Rcap.UUID AS Cfdi, 
+                              Rcap.FechaDocumento AS Fecha, cast(Rcap.PrecioCompra as decimal(15,2)) AS Precio, CAST(Rcap.VolumenPemex AS DECIMAL(15,2)) AS Volumen 
+                              FROM Recepciones R 
+                              INNER JOIN Recepcionescap Rcap ON R.Folio = Rcap.Folio 
+                              INNER JOIN ProveedCombust PC ON Rcap.IdProveedor = PC.IdProveedor 
+                              WHERE CAST(Rcap.FechaDocumento AS DATE) BETWEEN @inicio AND @fin and r.ClaveProducto=@cveproducto
+							  GROUP BY RTRIM(Rcap.RFCProveedor), RTRIM(PC.Nombre), PC.PermisoCRE, Rcap.UUID,Rcap.FechaDocumento, Rcap.PrecioCompra, Rcap.VolumenPemex", conn);
                 cmd.Parameters.AddWithValue("@inicio", inicio);
                 cmd.Parameters.AddWithValue("@fin", fin);
                 cmd.Parameters.AddWithValue("@cveproducto", cveproducto);
@@ -574,21 +622,25 @@ namespace SoftwarePlantas
                         string[] uuids = dr["Cfdi"].ToString().Split(',');
                         foreach (string uuid in uuids)
                         {
+                            DateTime fechaTransaccion = Convert.ToDateTime(dr["Fecha"]);
+                            double volumen = Convert.ToDouble(dr["Volumen"]);
+                            double precio = Convert.ToDouble(dr["Precio"]);
+                            
                             grupo[folio].CFDIs.Add(new CfdiInfo
                             {
                                 Cfdi = uuid.Trim(),
-                                PrecioVentaOCompraOContrap = Convert.ToDouble(dr["Precio"]),
-                                FechaYHoraTransaccion = Convert.ToDateTime(dr["Fecha"]),
+                                PrecioCompra = Math.Round(precio, 2),
+                                FechaYHoraTransaccion = fechaTransaccion,
                                 VolumenDocumentado = new VolumenDocumentado
                                 {
-                                    ValorNumerico = Convert.ToDouble(dr["Volumen"]),
+                                    ValorNumerico = Math.Round(volumen, 3),
                                     UnidadDeMedida = "UM03"
                                 }
                             });
 
                             recepciones.TotalDocumentosMes++;
-                            recepciones.ImporteTotalRecepcionesMensual += Convert.ToDouble(dr["Precio"]) * Convert.ToDouble(dr["Volumen"]);
-                            recepciones.SumaVolumenRecepcionMes.ValorNumerico += Convert.ToDouble(dr["Volumen"]);
+                            recepciones.ImporteTotalRecepcionesMensual += precio * volumen;
+                            recepciones.SumaVolumenRecepcionMes.ValorNumerico += volumen;
                         }
 
                         recepciones.TotalRecepcionesMes++;
@@ -597,8 +649,14 @@ namespace SoftwarePlantas
                     recepciones.Complemento.Add(new Complemento { Nacional = grupo.Values.ToList() });
                 }
             }
-            return recepciones;
+    
+            // ✅ Redondear totales también
+    recepciones.ImporteTotalRecepcionesMensual = Math.Round(recepciones.ImporteTotalRecepcionesMensual, 2);
+    recepciones.SumaVolumenRecepcionMes.ValorNumerico = Math.Round(recepciones.SumaVolumenRecepcionMes.ValorNumerico, 3);
+    
+    return recepciones;
         }
+
         private Entregas ObtenerEntregas(DateTime inicio, DateTime fin, string instanciaConnectionString,string cveproducto)
         {
             Entregas entregas = new Entregas
@@ -610,7 +668,7 @@ namespace SoftwarePlantas
             using (SqlConnection conn = new SqlConnection(instanciaConnectionString))
             {
                 conn.Open();
-                SqlCommand cmd = new SqlCommand("SELECT RFC RfcCliente,RazonSocial NombreCliente,'H/21100/COM/201' PermisoCliente,D.UUID AS Cfdi,D.Fecha,DD.Precio,DD.Cantidad AS Volumen FROM Documentos D INNER JOIN DocumentosDetalle DD ON D.UUID=DD.UUID WHERE CAST(d.Fecha AS DATE) BETWEEN @inicio AND @fin and Dd.Codigo=@cveproducto", conn);
+                SqlCommand cmd = new SqlCommand("SELECT RFC RfcCliente,RazonSocial NombreCliente,'H/21100/COM/201' PermisoCliente,D.UUID AS Cfdi,D.Fecha,CAST(DD.Precio AS DECIMAL(15,2)) Precio,CAST(DD.Cantidad AS DECIMAL(15,2)) AS Volumen FROM Documentos D INNER JOIN DocumentosDetalle DD ON D.UUID=DD.UUID WHERE CAST(d.Fecha AS DATE) BETWEEN @inicio AND @fin and Dd.Codigo=@cveproducto", conn);
                 cmd.Parameters.AddWithValue("@inicio", inicio);
                 cmd.Parameters.AddWithValue("@fin", fin);
                 cmd.Parameters.AddWithValue("@cveproducto", cveproducto);
@@ -631,27 +689,39 @@ namespace SoftwarePlantas
                                 CFDIs = new List<CfdiInfo>()
                             };
                         }
+                        
+                        DateTime fechaTransaccion = Convert.ToDateTime(dr["Fecha"]);
+                        double volumen = Convert.ToDouble(dr["Volumen"]);
+                        double precio = Convert.ToDouble(dr["Precio"]);
+                        
                         grupo[rfc].CFDIs.Add(new CfdiInfo
                         {
                             Cfdi = dr["Cfdi"].ToString(),
-                            PrecioVentaOCompraOContrap = Convert.ToDouble(dr["Precio"]),
-                            FechaYHoraTransaccion = Convert.ToDateTime(dr["Fecha"]),
+                            // ✅ Solo asignar PrecioVenta (NO PrecioCompra)
+                            PrecioCompra = null, // ✅ Explícitamente null para omitir
+                            PrecioVenta = Math.Round(precio, 2),
+                            FechaYHoraTransaccion = fechaTransaccion,
                             VolumenDocumentado = new VolumenDocumentado
                             {
-                                ValorNumerico = Convert.ToDouble(dr["Volumen"]),
+                                ValorNumerico = Math.Round(volumen, 3),
                                 UnidadDeMedida = "UM03"
                             }
                         });
 
                         entregas.TotalEntregasMes++;
                         entregas.TotalDocumentosMes++;
-                        entregas.ImporteTotalEntregasMes += Convert.ToDouble(dr["Precio"]) * Convert.ToDouble(dr["Volumen"]);
-                        entregas.SumaVolumenEntregadoMes.ValorNumerico += Convert.ToDouble(dr["Volumen"]);
+                        entregas.ImporteTotalEntregasMes += precio * volumen;
+                        entregas.SumaVolumenEntregadoMes.ValorNumerico += volumen;
                     }
 
                     entregas.Complemento.Add(new Complemento { Nacional = grupo.Values.ToList() });
                 }
             }
+            
+            // ✅ Redondear totales también
+            entregas.ImporteTotalEntregasMes = Math.Round(entregas.ImporteTotalEntregasMes, 2);
+            entregas.SumaVolumenEntregadoMes.ValorNumerico = Math.Round(entregas.SumaVolumenEntregadoMes.ValorNumerico, 3);
+            
             return entregas;
         }
 
@@ -861,8 +931,8 @@ namespace SoftwarePlantas
     CAST(Rcap.FechaDocumento AS date) AS FechaDocumento,
     CAST(Rcap.FechaRecepcion AS date) AS FechaRecepcion,
     Rcap.FolioDocumento,
-    Rcap.VolumenPemex AS Volumen,
-    Rcap.PrecioCompra
+    CAST(Rcap.VolumenPemex AS DECIMAL(15,2)) AS Volumen,
+    CAST(Rcap.PrecioCompra AS DECIMAL (15,2)) PrecioCompra
 FROM dbo.Recepcionescap Rcap
 LEFT JOIN dbo.ProveedCombust PC ON Rcap.IdProveedor = PC.IdProveedor
 WHERE CAST(Rcap.FechaDocumento AS date)  BETWEEN @inicio AND @fin
@@ -916,8 +986,8 @@ SELECT
     RTRIM(D.RazonSocial) AS NombreCliente,
     CAST(D.Fecha AS date) AS Fecha,
     DD.Codigo,
-    SUM(DD.Cantidad) AS Cantidad,
-    D.Total AS Total
+    CAST(SUM(DD.Cantidad) AS DECIMAL(15,2)) AS Cantidad,
+    CAST(D.Total AS DECIMAL(15,2)) AS Total
 FROM dbo.Documentos D
 INNER JOIN dbo.DocumentosDetalle DD ON D.UUID = DD.UUID
 WHERE CAST(D.Fecha AS date) BETWEEN @inicio AND @fin
@@ -1082,7 +1152,7 @@ ORDER BY Codigo,CAST(D.Fecha AS date)
                 wsEntregas.Cells[row, 7].Style.Numberformat.Format = "#,##0.00";
                 wsEntregas.Cells[row, 7].Style.Font.Bold = true;
                 wsEntregas.Cells[row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                wsEntregas.Cells[row, 7].Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+               
 
                 wsEntregas.Cells.AutoFitColumns();
                 wsEntregas.View.FreezePanes(5, 1);
