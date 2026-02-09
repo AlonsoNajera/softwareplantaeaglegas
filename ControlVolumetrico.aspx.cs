@@ -304,7 +304,7 @@ namespace SoftwarePlantas
         {
             public string RfcClienteOProveedor { get; set; }
             public string NombreClienteOProveedor { get; set; }
-            public string PermisoClienteOProveedor { get; set; }
+        
             public List<CfdiInfo> CFDIs { get; set; }
         }
 
@@ -606,15 +606,13 @@ namespace SoftwarePlantas
                         string folio = dr["Folio"].ToString();
                         string rfc = dr["RFCProveedor"].ToString();
                         string nombre = dr["NombreProveedor"].ToString();
-                        string permiso = dr["PermisoProveedor"].ToString();
-
+                       
                         if (!grupo.ContainsKey(folio))
                         {
                             grupo[folio] = new Nacional
                             {
                                 RfcClienteOProveedor = rfc,
                                 NombreClienteOProveedor = nombre,
-                                PermisoClienteOProveedor = permiso,
                                 CFDIs = new List<CfdiInfo>()
                             };
                         }
@@ -685,7 +683,6 @@ namespace SoftwarePlantas
                             {
                                 RfcClienteOProveedor = rfc,
                                 NombreClienteOProveedor = dr["NombreCliente"].ToString(),
-                                PermisoClienteOProveedor = dr["PermisoCliente"].ToString(),
                                 CFDIs = new List<CfdiInfo>()
                             };
                         }
