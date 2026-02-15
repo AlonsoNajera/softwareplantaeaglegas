@@ -30,11 +30,11 @@ namespace SoftwarePlantas
                     btnLogin.Enabled = false;
                     txtPassword.Enabled = false;
                     txtUsername.Enabled = false;
-                    lblVersion.Text = "LICENCIA SUSPENDIDA - Version 4.0";
+                    lblVersion.Text = "LICENCIA SUSPENDIDA - Version 4.2";
                     return;
                 }
 
-                lblVersion.Text = "LICENCIA ACTIVA - Version 4.0";
+                lblVersion.Text = "LICENCIA ACTIVA - Version 4.2";
             }
         }
 

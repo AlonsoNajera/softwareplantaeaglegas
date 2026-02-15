@@ -157,7 +157,7 @@ namespace SoftwarePlantas
                 {
                     // Si la conexión es exitosa, guarda la instancia en la sesión
                     Session["instanciaSeleccionada"] = instanciaConnectionString;
-                    // Recargar los datos en el GridView
+                    // Recargar losdatos en el GridView
                     //btnBuscar_Click(null, EventArgs.Empty);
                 }
                 else
@@ -277,6 +277,12 @@ namespace SoftwarePlantas
             public int TotalDocumentosMes { get; set; }
             public double ImporteTotalRecepcionesMensual { get; set; }
             public List<Complemento> Complemento { get; set; }
+
+            // Omitir Complemento si no hay documentos
+            public bool ShouldSerializeComplemento()
+            {
+                return TotalDocumentosMes > 0 && Complemento != null && Complemento.Any(c => c.Nacional != null && c.Nacional.Count > 0);
+            }
         }
 
         public class Entregas
@@ -286,6 +292,12 @@ namespace SoftwarePlantas
             public int TotalDocumentosMes { get; set; }
             public double ImporteTotalEntregasMes { get; set; }
             public List<Complemento> Complemento { get; set; }
+
+            // Omitir Complemento si no hay documentos
+            public bool ShouldSerializeComplemento()
+            {
+                return TotalDocumentosMes > 0 && Complemento != null && Complemento.Any(c => c.Nacional != null && c.Nacional.Count > 0);
+            }
         }
 
         public class SumaVolumen
@@ -558,14 +570,21 @@ namespace SoftwarePlantas
                 cmd.Parameters.AddWithValue("@anio", fecha.Year);
                 cmd.Parameters.AddWithValue("@cveproducto", claveProducto);
 
-                
-
                 using (SqlDataReader dr = cmd.ExecuteReader())
                 {
                     if (dr.Read())
                     {
                         existencias.VolumenExistenciasMes = Convert.ToDouble(dr["VolumenDisponible"]);
-                        existencias.FechaYHoraEstaMedicionMes = Convert.ToDateTime(dr["FechaMedicionActual"]);
+                        var dt = Convert.ToDateTime(dr["FechaMedicionActual"]);
+                        // Asegurar que la fecha tenga Kind local para serializar con zona horaria
+                        existencias.FechaYHoraEstaMedicionMes = DateTime.SpecifyKind(dt, DateTimeKind.Local);
+                    }
+                    else
+                    {
+                        // Si no hay registros, poner volumen 0 y Fecha al último día del mes que se está generando
+                        existencias.VolumenExistenciasMes = 0;
+                        int ultimoDia = DateTime.DaysInMonth(fecha.Year, fecha.Month);
+                        existencias.FechaYHoraEstaMedicionMes = new DateTime(fecha.Year, fecha.Month, ultimoDia, 0, 0, 0, DateTimeKind.Local);
                     }
                 }
             }
@@ -644,7 +663,10 @@ namespace SoftwarePlantas
                         recepciones.TotalRecepcionesMes++;
                     }
 
-                    recepciones.Complemento.Add(new Complemento { Nacional = grupo.Values.ToList() });
+                    if (grupo.Count > 0)
+                    {
+                        recepciones.Complemento.Add(new Complemento { Nacional = grupo.Values.ToList() });
+                    }
                 }
             }
     
@@ -711,7 +733,10 @@ namespace SoftwarePlantas
                         entregas.SumaVolumenEntregadoMes.ValorNumerico += volumen;
                     }
 
-                    entregas.Complemento.Add(new Complemento { Nacional = grupo.Values.ToList() });
+                    if (grupo.Count > 0)
+                    {
+                        entregas.Complemento.Add(new Complemento { Nacional = grupo.Values.ToList() });
+                    }
                 }
             }
             
@@ -722,7 +747,7 @@ namespace SoftwarePlantas
             return entregas;
         }
 
-       
+
 
         protected void btnSoloPDF_Click(object sender, EventArgs e)
         {
@@ -734,6 +759,13 @@ namespace SoftwarePlantas
                 DateTime fechaFin = fechaInicio.AddMonths(1).AddDays(-1);
                 string instanciaConnectionString = Session["instanciaSeleccionada"]?.ToString();
 
+                if (string.IsNullOrWhiteSpace(instanciaConnectionString))
+                {
+                    ScriptManager.RegisterStartupScript(this, GetType(), "err",
+                        "Swal.fire('Error','No hay instancia seleccionada.','error');", true);
+                    return;
+                }
+
                 var reporte = ObtenerEncabezadoDesdeEmpresa(instanciaConnectionString, fechaFin);
                 if (reporte == null)
                 {
@@ -741,171 +773,270 @@ namespace SoftwarePlantas
                     return;
                 }
 
-                reporte.Producto = ObtenerProductosDesdeBD(fechaInicio, fechaFin, instanciaConnectionString);
-                string json = JsonConvert.SerializeObject(reporte, Formatting.Indented);
+                // ✅ Obtener datos igual que el Excel
+                List<RecepcionExcel> recepciones = ObtenerRecepcionesExcel(fechaInicio, fechaFin, instanciaConnectionString);
+                List<EntregaExcel> entregas = ObtenerEntregasExcel(fechaInicio, fechaFin, instanciaConnectionString);
+                List<ExistenciaExcel> existencias = ObtenerExistenciasExcel(fechaInicio, fechaFin, instanciaConnectionString);
 
+
+                
                 string uuid = Guid.NewGuid().ToString().ToUpper();
-                string rfcContribuyente = reporte.RfcContribuyente;
-                string rfcProveedor = reporte.RfcProveedor;
                 string fechaSAT = fechaFin.ToString("yyyy-MM-dd");
-                string nombrePdf = $"{uuid}_{fechaSAT}_CMN-1876_CMN_JSON.pdf";
+                string nombrePdf = $"{mes}-{anio}_ArchivoPDF-{uuid}.pdf";
 
-                string rutaPdf = Server.MapPath("~/tempzip/" + nombrePdf);
-                GenerarPDFDesdeJson(json, rutaPdf, fechaFin); // ← AQUÍ se llama tu método
+                // ✅ Generar PDF directamente en memoria (sin guardar en disco)
+                byte[] pdfBytes = GenerarPDFDesdeExcel(reporte, recepciones, entregas, existencias, fechaInicio, fechaFin);
 
-                // Descargar el PDF generado
-                if (File.Exists(rutaPdf))
-                {
-                    Response.Clear();
-                    Response.ContentType = "application/pdf";
-                    Response.AddHeader("Content-Disposition", $"attachment; filename={nombrePdf}");
-                    Response.TransmitFile(rutaPdf);
-                    Response.Flush();
-                    Response.End();
-                }
-                else
-                {
-                    ScriptManager.RegisterStartupScript(this, GetType(), "alert", "alert('No se pudo generar el PDF.');", true);
-                }
+                // ✅ Enviar directamente al cliente
+                Response.Clear();
+                Response.Buffer = true;
+                Response.ContentType = "application/pdf";
+                Response.AddHeader("Content-Disposition", $"attachment; filename=\"{nombrePdf}\"");
+                Response.BinaryWrite(pdfBytes);
+                Response.Flush();
+                Response.End();
+            }
+            catch (ThreadAbortException)
+            {
+                // Normal después de Response.End()
             }
             catch (Exception ex)
             {
-                ScriptManager.RegisterStartupScript(this, GetType(), "alert", $"alert('Error al generar el PDF: {ex.Message}');", true);
+                ScriptManager.RegisterStartupScript(this, GetType(), "alert", $"alert('Error al generar el PDF: {ex.Message.Replace("'", "\\'")}');", true);
             }
         }
 
 
 
 
-        private void GenerarPDFDesdeJson(string json, string rutaPdf,DateTime fechaFin)
+        // ✅ Modificado: mantiene columna Precio pero SIN sumar importes en totales
+        private byte[] GenerarPDFDesdeExcel(
+            CMNReporte reporte,
+            List<RecepcionExcel> recepciones,
+            List<EntregaExcel> entregas,
+            List<ExistenciaExcel> existencias,
+            DateTime fechaInicio,
+            DateTime fechaFin)
         {
-            var reporte = JsonConvert.DeserializeObject<CMNReporte>(json);
-        
-
-
-            using (FileStream fs = new FileStream(rutaPdf, FileMode.Create, FileAccess.Write, FileShare.None))
-            using (Document doc = new Document(PageSize.A4, 40f, 40f, 60f, 60f))
-            using (PdfWriter writer = PdfWriter.GetInstance(doc, fs))
+            using (MemoryStream ms = new MemoryStream())
             {
-                doc.Open();
-
-                var boldTitle = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 14);
-                var normalText = FontFactory.GetFont(FontFactory.HELVETICA, 10);
-
-                string mesAnio = fechaFin.ToString("MMMM/yyyy", new System.Globalization.CultureInfo("es-MX"));
-                doc.Add(new Paragraph("REPORTE MENSUAL - Fecha reportada: " + mesAnio, FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 12)));
-
-                doc.Add(new Paragraph("Fecha de generación: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"), normalText));
-            
-                doc.Add(new Paragraph("RFC Contribuyente: " + reporte.RfcContribuyente, normalText));
-                doc.Add(new Paragraph("RFC Proveedor: " + reporte.RfcProveedor, normalText));
-                doc.Add(new Paragraph("Clave Instalación: " + reporte.ClaveInstalacion, normalText));
-                doc.Add(new Paragraph("Permiso: " + reporte.NumPermiso, normalText));
-                doc.Add(new Paragraph(""));
-
-                foreach (var producto in reporte.Producto)
+                using (Document doc = new Document(PageSize.A4.Rotate(), 40f, 40f, 60f, 60f)) // Horizontal
+                using (PdfWriter writer = PdfWriter.GetInstance(doc, ms))
                 {
-                    doc.Add(new Paragraph($"Producto: {producto.ClaveProducto} - {producto.ClaveSubProducto}", boldTitle));
-                    doc.Add(new Paragraph($"Octanaje: {producto.ComposOctanajeGasolina} | No Fosil: {producto.GasolinaConCombustibleNoFosil}", normalText));
-                    doc.Add(new Paragraph("Existencias: " + producto.ReporteDeVolumenMensual.ControlDeExistencias.VolumenExistenciasMes +
-                                         " al " + producto.ReporteDeVolumenMensual.ControlDeExistencias.FechaYHoraEstaMedicionMes.ToString("yyyy-MM-dd"), normalText));
-                    doc.Add(new Paragraph(""));
+                    doc.Open();
 
-                    // Tabla de Recepciones
-                    var recepciones = producto.ReporteDeVolumenMensual.Recepciones;
-                    doc.Add(new Paragraph("Recepciones", boldTitle));
-                    PdfPTable tableR = new PdfPTable(5);
-                    tableR.WidthPercentage = 100;
-                    tableR.SetWidths(new float[] { 25, 20, 20, 15, 20 });
+                    var boldTitle = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 14);
+                    var boldSubtitle = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 12);
+                    var normalText = FontFactory.GetFont(FontFactory.HELVETICA, 10);
+                    var smallText = FontFactory.GetFont(FontFactory.HELVETICA, 8);
+                    var smallBold = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 8);
 
-                    tableR.AddCell("RFC Proveedor");
-                    tableR.AddCell("Nombre");
-                    tableR.AddCell("UUID");
-                    tableR.AddCell("Volumen");
-                    tableR.AddCell("Fecha");
+                    // ===== ENCABEZADO =====
+                    doc.Add(new Paragraph("REPORTE DE CONTROL VOLUMÉTRICO", boldTitle));
+                    doc.Add(new Paragraph($"Periodo: {fechaInicio:yyyy-MM-dd} al {fechaFin:yyyy-MM-dd}", boldSubtitle));
+                    doc.Add(new Paragraph($"Fecha de generación: {DateTime.Now:yyyy-MM-dd HH:mm}", normalText));
+                    doc.Add(new Paragraph($"RFC Contribuyente: {reporte.RfcContribuyente}", normalText));
+                    doc.Add(new Paragraph($"RFC Proveedor: {reporte.RfcProveedor}", normalText));
+                    doc.Add(new Paragraph($"Clave Instalación: {reporte.ClaveInstalacion}", normalText));
+                    doc.Add(new Paragraph($"Permiso: {reporte.NumPermiso}", normalText));
+                    doc.Add(new Paragraph("\n"));
 
-                    double totalVolumenRecep = 0;
-                    int totalDocsRecep = 0;
+                    // ===== EXISTENCIAS =====
+                    doc.Add(new Paragraph("EXISTENCIAS AL FINAL DEL MES", boldSubtitle));
 
-                    foreach (var comp in recepciones.Complemento)
+                    if (existencias != null && existencias.Count > 0)
                     {
-                        foreach (var nacional in comp.Nacional)
-                        {
-                            foreach (var cfdi in nacional.CFDIs)
-                            {
-                                tableR.AddCell(nacional.RfcClienteOProveedor);
-                                tableR.AddCell(nacional.NombreClienteOProveedor);
-                                tableR.AddCell(cfdi.Cfdi);
-                                tableR.AddCell(cfdi.VolumenDocumentado.ValorNumerico.ToString("N2"));
-                                tableR.AddCell(cfdi.FechaYHoraTransaccion.ToString("yyyy-MM-dd"));
+                        PdfPTable tableExist = new PdfPTable(4);
+                        tableExist.WidthPercentage = 100;
+                        tableExist.SetWidths(new float[] { 20, 30, 30, 20 });
 
-                                totalVolumenRecep += cfdi.VolumenDocumentado.ValorNumerico;
-                                totalDocsRecep++;
-                            }
+                        tableExist.AddCell(new PdfPCell(new Phrase("Fecha", smallText)) { BackgroundColor = BaseColor.LIGHT_GRAY, HorizontalAlignment = Element.ALIGN_CENTER });
+                        tableExist.AddCell(new PdfPCell(new Phrase("Clave Producto", smallText)) { BackgroundColor = BaseColor.LIGHT_GRAY, HorizontalAlignment = Element.ALIGN_CENTER });
+                        tableExist.AddCell(new PdfPCell(new Phrase("Nombre Producto", smallText)) { BackgroundColor = BaseColor.LIGHT_GRAY, HorizontalAlignment = Element.ALIGN_CENTER });
+                        tableExist.AddCell(new PdfPCell(new Phrase("Volumen", smallText)) { BackgroundColor = BaseColor.LIGHT_GRAY, HorizontalAlignment = Element.ALIGN_CENTER });
+
+                        double totalVolExist = 0;
+                        foreach (var ex in existencias)
+                        {
+                            tableExist.AddCell(new Phrase(ex.FechaMedicion?.ToString("yyyy-MM-dd") ?? "", smallText));
+                            tableExist.AddCell(new Phrase(ex.ClaveProducto ?? "", smallText));
+                            tableExist.AddCell(new Phrase(ex.NombreProducto ?? "", smallText));
+                            tableExist.AddCell(new PdfPCell(new Phrase(ex.VolumenDisponible.ToString("N3"), smallText)) { HorizontalAlignment = Element.ALIGN_RIGHT });
+                            totalVolExist += ex.VolumenDisponible;
                         }
+
+                        PdfPCell cellTotalEx = new PdfPCell(new Phrase("TOTALES:", smallBold)) { Colspan = 3, HorizontalAlignment = Element.ALIGN_RIGHT, BackgroundColor = BaseColor.LIGHT_GRAY };
+                        tableExist.AddCell(cellTotalEx);
+                        tableExist.AddCell(new PdfPCell(new Phrase(totalVolExist.ToString("N3"), smallBold)) { HorizontalAlignment = Element.ALIGN_RIGHT, BackgroundColor = BaseColor.LIGHT_GRAY });
+
+                        doc.Add(tableExist);
+                    }
+                    else
+                    {
+                        doc.Add(new Paragraph("No hay existencias registradas.", normalText));
+                    }
+                    doc.Add(new Paragraph("\n"));
+
+                    // ===== RECEPCIONES AGRUPADAS POR PRODUCTO =====
+                    doc.Add(new Paragraph("RECEPCIONES DEL MES", boldSubtitle));
+
+                    if (recepciones != null && recepciones.Count > 0)
+                    {
+                        var recepcionesAgrupadas = recepciones.GroupBy(r => r.ClaveProducto).OrderBy(g => g.Key);
+
+                        foreach (var grupo in recepcionesAgrupadas)
+                        {
+                            string claveProducto = grupo.Key ?? "SIN CLAVE";
+                            string nombreProducto = grupo.First().Producto ?? "";
+
+                            doc.Add(new Paragraph($"\nProducto: {claveProducto} - {nombreProducto}", smallBold));
+
+                            PdfPTable tableRecep = new PdfPTable(9);
+                            tableRecep.WidthPercentage = 100;
+                            tableRecep.SetWidths(new float[] { 10, 20, 25, 15, 30, 15, 15, 12, 12 });
+
+                            // Encabezados (con Precio)
+                            string[] headersRec = { "Folio", "RFC", "Nombre", "Permiso", "UUID", "Fecha Doc", "Fecha Recep", "Volumen", "Precio" };
+                            foreach (var h in headersRec)
+                            {
+                                tableRecep.AddCell(new PdfPCell(new Phrase(h, smallText)) { BackgroundColor = BaseColor.LIGHT_GRAY, HorizontalAlignment = Element.ALIGN_CENTER });
+                            }
+
+                            double totalVolRecepProducto = 0;
+
+                            foreach (var r in grupo)
+                            {
+                                tableRecep.AddCell(new Phrase(r.Folio ?? "", smallText));
+                                tableRecep.AddCell(new Phrase(r.RFCProveedor ?? "", smallText));
+                                tableRecep.AddCell(new Phrase(r.NombreProveedor ?? "", smallText));
+                                tableRecep.AddCell(new Phrase(r.PermisoProveedor ?? "", smallText));
+                                tableRecep.AddCell(new Phrase(r.UUID ?? "", smallText));
+                                tableRecep.AddCell(new Phrase(r.FechaDocumento?.ToString("yyyy-MM-dd") ?? "", smallText));
+                                tableRecep.AddCell(new Phrase(r.FechaRecepcion?.ToString("yyyy-MM-dd") ?? "", smallText));
+                                tableRecep.AddCell(new PdfPCell(new Phrase(r.Volumen.ToString("N3"), smallText)) { HorizontalAlignment = Element.ALIGN_RIGHT });
+                                tableRecep.AddCell(new PdfPCell(new Phrase(r.PrecioCompra.ToString("N2"), smallText)) { HorizontalAlignment = Element.ALIGN_RIGHT });
+
+                                totalVolRecepProducto += r.Volumen;
+                            }
+
+                            // ✅ Subtotales por producto (SOLO volumen, sin importe)
+                            PdfPCell cellSubtotalR = new PdfPCell(new Phrase($"Subtotal {claveProducto}:", smallBold))
+                            {
+                                Colspan = 7,
+                                HorizontalAlignment = Element.ALIGN_RIGHT,
+                                BackgroundColor = BaseColor.YELLOW
+                            };
+                            tableRecep.AddCell(cellSubtotalR);
+                            tableRecep.AddCell(new PdfPCell(new Phrase(totalVolRecepProducto.ToString("N3"), smallBold)) { HorizontalAlignment = Element.ALIGN_RIGHT, BackgroundColor = BaseColor.YELLOW });
+                            tableRecep.AddCell(new PdfPCell(new Phrase("", smallBold)) { BackgroundColor = BaseColor.YELLOW }); // ✅ Celda vacía en columna Precio
+
+                            doc.Add(tableRecep);
+                        }
+
+                        // ✅ TOTALES GENERALES DE RECEPCIONES (SOLO volumen)
+                        double totalGeneralRecep = recepciones.Sum(r => r.Volumen);
+
+                        PdfPTable tableTotalRecep = new PdfPTable(2);
+                        tableTotalRecep.WidthPercentage = 40;
+                        tableTotalRecep.HorizontalAlignment = Element.ALIGN_RIGHT;
+
+                        PdfPCell cellTotalGenR = new PdfPCell(new Phrase("TOTAL GENERAL RECEPCIONES:", smallBold))
+                        {
+                            HorizontalAlignment = Element.ALIGN_RIGHT,
+                            BackgroundColor = BaseColor.ORANGE
+                        };
+                        tableTotalRecep.AddCell(cellTotalGenR);
+                        tableTotalRecep.AddCell(new PdfPCell(new Phrase(totalGeneralRecep.ToString("N3"), smallBold)) { HorizontalAlignment = Element.ALIGN_RIGHT, BackgroundColor = BaseColor.ORANGE });
+
+                        doc.Add(tableTotalRecep);
+                    }
+                    else
+                    {
+                        doc.Add(new Paragraph("No hay recepciones registradas.", normalText));
+                    }
+                    doc.Add(new Paragraph("\n"));
+
+                    // ===== ENTREGAS AGRUPADAS POR PRODUCTO =====
+                    doc.NewPage();
+                    doc.Add(new Paragraph("ENTREGAS DEL MES", boldSubtitle));
+
+                    if (entregas != null && entregas.Count > 0)
+                    {
+                        var entregasAgrupadas = entregas.GroupBy(e => e.Codigo).OrderBy(g => g.Key);
+
+                        foreach (var grupo in entregasAgrupadas)
+                        {
+                            string codigoProducto = grupo.Key ?? "SIN CÓDIGO";
+
+                            doc.Add(new Paragraph($"\nProducto: {codigoProducto}", smallBold));
+
+                            PdfPTable tableEnt = new PdfPTable(6);
+                            tableEnt.WidthPercentage = 100;
+                            tableEnt.SetWidths(new float[] { 35, 20, 30, 15, 12, 12 });
+
+                            // Encabezados (con Total)
+                            string[] headersEnt = { "UUID", "RFC Cliente", "Nombre", "Fecha", "Cantidad", "Total" };
+                            foreach (var h in headersEnt)
+                            {
+                                tableEnt.AddCell(new PdfPCell(new Phrase(h, smallText)) { BackgroundColor = BaseColor.LIGHT_GRAY, HorizontalAlignment = Element.ALIGN_CENTER });
+                            }
+
+                            double totalCantEntProducto = 0;
+
+                            foreach (var e in grupo)
+                            {
+                                tableEnt.AddCell(new Phrase(e.UUID ?? "", smallText));
+                                tableEnt.AddCell(new Phrase(e.RFCCliente ?? "", smallText));
+                                tableEnt.AddCell(new Phrase(e.NombreCliente ?? "", smallText));
+                                tableEnt.AddCell(new Phrase(e.Fecha?.ToString("yyyy-MM-dd") ?? "", smallText));
+                                tableEnt.AddCell(new PdfPCell(new Phrase(e.Cantidad.ToString("N3"), smallText)) { HorizontalAlignment = Element.ALIGN_RIGHT });
+                                tableEnt.AddCell(new PdfPCell(new Phrase(e.Total.ToString("N2"), smallText)) { HorizontalAlignment = Element.ALIGN_RIGHT });
+
+                                totalCantEntProducto += e.Cantidad;
+                            }
+
+                            // ✅ Subtotales por producto (SOLO cantidad, sin total importe)
+                            PdfPCell cellSubtotalE = new PdfPCell(new Phrase($"Subtotal {codigoProducto}:", smallBold))
+                            {
+                                Colspan = 4,
+                                HorizontalAlignment = Element.ALIGN_RIGHT,
+                                BackgroundColor = BaseColor.YELLOW
+                            };
+                            tableEnt.AddCell(cellSubtotalE);
+                            tableEnt.AddCell(new PdfPCell(new Phrase(totalCantEntProducto.ToString("N3"), smallBold)) { HorizontalAlignment = Element.ALIGN_RIGHT, BackgroundColor = BaseColor.YELLOW });
+                            tableEnt.AddCell(new PdfPCell(new Phrase("", smallBold)) { BackgroundColor = BaseColor.YELLOW }); // ✅ Celda vacía en columna Total
+
+                            doc.Add(tableEnt);
+                        }
+
+                        // ✅ TOTALES GENERALES DE ENTREGAS (SOLO cantidad)
+                        double totalGeneralEnt = entregas.Sum(e => e.Cantidad);
+
+                        PdfPTable tableTotalEnt = new PdfPTable(2);
+                        tableTotalEnt.WidthPercentage = 40;
+                        tableTotalEnt.HorizontalAlignment = Element.ALIGN_RIGHT;
+
+                        PdfPCell cellTotalGenE = new PdfPCell(new Phrase("TOTAL GENERAL ENTREGAS:", smallBold))
+                        {
+                            HorizontalAlignment = Element.ALIGN_RIGHT,
+                            BackgroundColor = BaseColor.ORANGE
+                        };
+                        tableTotalEnt.AddCell(cellTotalGenE);
+                        tableTotalEnt.AddCell(new PdfPCell(new Phrase(totalGeneralEnt.ToString("N3"), smallBold)) { HorizontalAlignment = Element.ALIGN_RIGHT, BackgroundColor = BaseColor.ORANGE });
+
+                        doc.Add(tableTotalEnt);
+                    }
+                    else
+                    {
+                        doc.Add(new Paragraph("No hay entregas registradas.", normalText));
                     }
 
-                    PdfPCell cellTotalR = new PdfPCell(new Phrase("Totales:"));
-                    cellTotalR.Colspan = 3;
-                    cellTotalR.HorizontalAlignment = Element.ALIGN_RIGHT;
-                    cellTotalR.BackgroundColor = BaseColor.LIGHT_GRAY;
-                    tableR.AddCell(cellTotalR);
-                    tableR.AddCell(totalVolumenRecep.ToString("N2"));
-                    tableR.AddCell(totalDocsRecep.ToString());
-
-                    doc.Add(tableR);
-                    doc.Add(new Paragraph(""));
-
-                    // Tabla de Entregas
-                    var entregas = producto.ReporteDeVolumenMensual.Entregas;
-                    doc.Add(new Paragraph("Entregas", boldTitle));
-                    PdfPTable tableE = new PdfPTable(5);
-                    tableE.WidthPercentage = 100;
-                    tableE.SetWidths(new float[] { 25, 20, 20, 15, 20 });
-
-                    tableE.AddCell("RFC Cliente");
-                    tableE.AddCell("Nombre");
-                    tableE.AddCell("UUID");
-                    tableE.AddCell("Volumen");
-                    tableE.AddCell("Fecha");
-
-                    double totalVolumenEnt = 0;
-                    int totalDocsEnt = 0;
-
-                    foreach (var comp in entregas.Complemento)
-                    {
-                        foreach (var nacional in comp.Nacional)
-                        {
-                            foreach (var cfdi in nacional.CFDIs)
-                            {
-                                tableE.AddCell(nacional.RfcClienteOProveedor);
-                                tableE.AddCell(nacional.NombreClienteOProveedor);
-                                tableE.AddCell(cfdi.Cfdi);
-                                tableE.AddCell(cfdi.VolumenDocumentado.ValorNumerico.ToString("N2"));
-                                tableE.AddCell(cfdi.FechaYHoraTransaccion.ToString("yyyy-MM-dd"));
-
-                                totalVolumenEnt += cfdi.VolumenDocumentado.ValorNumerico;
-                                totalDocsEnt++;
-                            }
-                        }
-                    }
-
-                    PdfPCell cellTotalE = new PdfPCell(new Phrase("Totales:"));
-                    cellTotalE.Colspan = 3;
-                    cellTotalE.HorizontalAlignment = Element.ALIGN_RIGHT;
-                    cellTotalE.BackgroundColor = BaseColor.LIGHT_GRAY;
-                    tableE.AddCell(cellTotalE);
-                    tableE.AddCell(totalVolumenEnt.ToString("N2"));
-                    tableE.AddCell(totalDocsEnt.ToString());
-
-                    doc.Add(tableE);
-                    doc.Add(new Paragraph("\n\n"));
+                    doc.Close();
                 }
 
-                doc.Close();
+                return ms.ToArray();
             }
         }
-
 
 
         private List<RecepcionExcel> ObtenerRecepcionesExcel(DateTime inicio, DateTime fin, string cs)
@@ -1149,7 +1280,7 @@ ORDER BY Codigo,CAST(D.Fecha AS date)
                 wsEntregas.Cells[row, 7].Style.Numberformat.Format = "#,##0.00";
                 wsEntregas.Cells[row, 7].Style.Font.Bold = true;
                 wsEntregas.Cells[row, 7].Style.Fill.PatternType = ExcelFillStyle.Solid;
-               
+
 
                 wsEntregas.Cells.AutoFitColumns();
                 wsEntregas.View.FreezePanes(5, 1);
